@@ -1,13 +1,13 @@
 # DrrrBot
 
-[English](README.md) | 简体中文
+简体中文
 
-一个用于 drrr.com 的Node.js机器人
+一个用于 drrr.com 的Python机器人
 
-该项目是基于 [DrrrChatbots/drrr-lambot](https://github.com/DrrrChatbots/drrr-lambot) 进行修改的。（感谢浪打大佬 [@nobodyzxc](https://github.com/nobodyzxc)）
+该项目是基于 [Transfusion/durararobot](https://github.com/Transfusion/durararobot) 进行修改的。
 
 所做的修改：
-* 删除对`浪语`的支持（因为`event`好像有些问题）。
+* 删除了后台交互终端。
 * 添加了房间消息的本地日志（保存在`logs`文件夹中）。
 * 添加了自动保持连接的功能（定时向机器人发送私信）。
 * 添加了配置文件（`config.txt`）。
