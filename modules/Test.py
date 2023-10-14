@@ -1,11 +1,6 @@
 import os
+from time import time
 from modules.module import Module
-
-# import re
-# cmd = r'^\+1'
-# msg = '+1 '
-# print(re.findall( re.compile(cmd), msg))
-# print(os.path.dirname(__file__))
 
 class Test(Module):
     def __init__(self, bot):
@@ -13,13 +8,17 @@ class Test(Module):
 
     @property
     def cmds(self):
-        cmd_dict = {'test': r'^\/test'}
+        cmd_dict = {
+                    'test': r'^\/test',
+                    'showTime': r'^\/time'
+                    }
         return cmd_dict
     
     def unload(self):
         pass
     
     def test(self, msg):
-        self.bot.send(f'/me{msg.user} test')
-
-
+        self.bot.send(f'@{msg.user} test')
+    
+    def showTime(self, msg):
+        self.bot.send(f'/me {time.strftime("%H:%M:%S", time.localtime())}')
