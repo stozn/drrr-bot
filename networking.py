@@ -175,7 +175,7 @@ class Connection:
                         else:
                             resp = await resp.text()
                             resp_json = json.loads(resp)
-                            self.logger.error('更新房间信息失败1', resp_json['error'])
+                            self.logger.error(f"更新房间信息失败1: {resp_json['error']}")
                             return
 
                         users = {}
@@ -194,7 +194,7 @@ class Connection:
                             self.room.banned_ids = banned_ids
                     return
             except Exception:
-                self.logger.error('更新房间信息失败2', resp_json['error'])
+                self.logger.error(f"更新房间信息失败2: {resp_json['error']}")
                 self.logger.error(traceback.format_exc())
 
     # 进入房间
@@ -211,7 +211,7 @@ class Connection:
                     else:
                         resp = await resp.text()
                         resp_json = json.loads(resp)
-                        self.logger.error('进入房间失败1', resp_json['error'][0])
+                        self.logger.error(f"进入房间失败1: {resp_json['error']}")
                         return
                   
                     if stat == 200 and resp_json['message'] == 'ok' and resp_json['redirect'] == 'room':
@@ -227,7 +227,7 @@ class Connection:
                         self.logger.warning('房间不存在或未登录') 
                     return
             except aiohttp.client_exceptions.ContentTypeError:
-                self.logger.error('进入房间失败2', resp_json['error'])
+                self.logger.error(f"进入房间失败2: {resp_json['error']}")
                 self.logger.error(await resp.text())
                 raise()
             except Exception as e:
@@ -275,7 +275,7 @@ class Connection:
                     else:
                         resp = await resp.text()
                         resp_json = json.loads(resp)
-                        self.logger.debug('更新房间信息失败：', resp_json['error'])
+                        self.logger.debug(f"更新房间信息失败: {resp_json['error']}")
                         self.room_connected = False
                         return
                     
