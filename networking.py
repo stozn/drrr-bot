@@ -211,7 +211,7 @@ class Connection:
                     else:
                         resp = await resp.text()
                         resp_json = json.loads(resp)
-                        self.logger.error('进入房间失败1', resp_json['error'])
+                        self.logger.error('进入房间失败1', resp_json['error'][0])
                         return
                   
                     if stat == 200 and resp_json['message'] == 'ok' and resp_json['redirect'] == 'room':
