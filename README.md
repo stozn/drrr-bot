@@ -68,7 +68,7 @@ throttle = 1.5
 ## 模块示例
 
 ```python
-// modules/Test.py
+# modules/Test.py
 
 from modules.module import Module
 
