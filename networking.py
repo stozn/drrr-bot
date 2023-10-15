@@ -28,7 +28,7 @@ class Connection:
         self.ua = 'Bot'
         self.retries = 100
         self.sendQ = asyncio.Queue()
-        self.throttle = 2.5
+        self.throttle = 1.5
         self.char_limit = 140
         self.msg_cb = msg_cb
         self.loop = loop
