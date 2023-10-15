@@ -1,0 +1,20 @@
+# 用户名
+name = test
+
+# Tripcode
+tc = mytc123
+
+# 头像名称
+avatar = setton
+
+# 房间ID
+roomID = gV8M14bkrv
+
+# 用户代理
+agent = Bot
+
+# 加载的模块
+mods = Test, BingTa
+
+# 发送消息的等待时间（秒）
+throttle = 1.5

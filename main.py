@@ -1,4 +1,6 @@
 import asyncio
+import copy
+import os
 import sys
 import traceback
 import networking
@@ -7,14 +9,42 @@ import concurrent.futures
 from modules import module
 import logging
 
-# =============配置======================
-                                        #
-name = 'Bot'                            # 机器人名字
-icon = 'kanra'                          # 机器人头像
-roomID = 'UgaX0cBVAT'                   # 房间ID
-modsToLoad = ['Test', 'BingTa']         # 要加载的模块
-                                        # 
-# ======================================
+defaultConfig = {
+  'name': 'test',
+  'tc': 'None',
+  'avatar': 'setton',
+  'agent': 'Bot',
+  'roomID': 'gV8M14bkrv',
+  'throttle': 1.5,
+  'mods' : ['Test', 'BingTa']
+}
+
+config = copy.deepcopy(defaultConfig)
+if not os.path.exists('config.txt'):
+    with open('config.txt', 'w') as f:
+        for key, value in config.items():
+            if key != 'mods':
+                f.write(f"{key} = {value}\n")
+            else:
+                f.write(f"{key} = {', '.join(value)}\n")
+
+with open('config.txt', 'r', encoding='utf8') as f:
+    for line in f:
+        line = line.strip()
+        if line.startswith('#') or not line:
+            continue
+        key, value = [x.strip() for x in line.split('=')]
+        if(key=='mods'):
+            value = [x.strip() for x in value.split(',')]
+        elif(key=='throttle'):
+            value = float(value)
+        config[key] = value
+
+print('配置：')
+for k, v in config.items():
+    print(f'   {k}: {v}')
+print()
+
 modules = {}
 mods_dir = 'modules'
 logger = logging.getLogger(__name__)
@@ -40,7 +70,7 @@ def load_module(name, bot):
     if not issubclass(cls, module.Module):
         logger.error('模块的顶级类必须继承自 module.Module')
         return False
-    logger.info(f'加载模块【{name}】')
+    logger.info('\033[1;36m' + f'加载模块【{name}】' + '\033[0m')
     modules[name] = cls(bot)
 
 def unload_module(name):
@@ -70,8 +100,8 @@ async def handler(msg):
 if __name__ == '__main__':
     logger.info('程序启动')
     loop = asyncio.get_event_loop()
-    bot = networking.Connection(name, icon, roomID, handler, loop)
-    for mod in modsToLoad:
+    bot = networking.Connection(config['name'], config['tc'], config['avatar'], config['roomID'], config['agent'], config['throttle'], handler, loop)
+    for mod in config['mods']:
         load_module(mod, bot)
 
     bot.start()

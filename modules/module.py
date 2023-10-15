@@ -9,9 +9,9 @@ class Module(metaclass=ABCMeta):
     def cmds(self):
         pass
 
-    @abstractmethod
-    def unload(self):
-        pass
+    # @abstractmethod
+    # def unload(self):
+    #     pass
 
     def handler(self, msg):
         for name, reg in self.cmds.items():
