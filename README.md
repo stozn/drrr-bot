@@ -2,7 +2,7 @@
 
 简体中文
 
-一个用于 drrr.com 的Python版Bot
+一个用于 [drrr.com](https://drrr.com) 的Python版Bot
 
 该项目是基于 [Transfusion/durararobot](https://github.com/Transfusion/durararobot) 进行修改的。
 
