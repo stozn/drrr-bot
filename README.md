@@ -57,7 +57,7 @@ throttle = 1.5
 
 * 如果你想将某项配置保持默认，可以删除那一行。
 * Tripcode（`tc`）可选。如果想无tc登录，只需删除该行或设置为`None`。
-* `RoomID`可以在房间的URL中找到，例如：https://drrr.com/room/gV8M14bkrv。
+* `RoomID`可以在房间的URL中找到，例如：https://drrr.com/room/gV8M14bkrv 。
 * 推荐将`throttle`设置为至少`1秒`，如果发送消息太快，你的IP可能会被封禁。
 * Cookies将以Bot的用户名为文件名保存在`cookies`文件夹中。如果想重置Cookies，只需删除该文件夹下对应的文件。
 * 头像参考[这里](#avatar)。
@@ -65,7 +65,7 @@ throttle = 1.5
 
 
 
-## 示例
+## 模块示例
 
 ```python
 // modules/Test.py
