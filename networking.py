@@ -294,7 +294,7 @@ class Connection:
                                     if msg.message:
                                         info = f'{msg.user} | {msg.message}'
                                         self.logger.info(info)
-                                        await self.write('log', msg.user.name + ',' + msg.user.tripcode + ',' + msg.message.replace('\n', '\\n').replace(',', '，'), 'csv')
+                                        await self.write('logs', msg.user.name + ',' + msg.user.tripcode + ',' + msg.message.replace('\n', '\\n').replace(',', '，'), 'csv')
 
                                     if msg.type == popyo.Message_Type.message:
                                         await self.msg_cb(msg)
