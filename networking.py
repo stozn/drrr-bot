@@ -208,6 +208,9 @@ class Connection:
                     resp_json = None
                     if 'application/json' in content_type:
                         resp_json = await resp.json()
+                        if('error' in resp_json.keys()):
+                            self.logger.error(f"进入房间失败: {resp_json['error']}")
+                            return
                     else:
                         resp = await resp.text()
                         resp_json = json.loads(resp)
