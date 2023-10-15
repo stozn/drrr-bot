@@ -2,7 +2,7 @@ __pycache__/
 **/__pycache__/
 
 启动.cmd
-清理个人数据.bat
+！清理个人数据.bat
 
 python
 cookies
