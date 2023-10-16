@@ -1,3 +1,9 @@
+'''
+《冰冷的她醒来之前》是一款桌游。本模块由Stozn编写。
+游戏规则：https://docs.qq.com/sheet/DVkVCWFFueUVFcXNB?tab=mubbke
+全卡牌：https://docs.qq.com/sheet/DVkVCWFFueUVFcXNB?tab=2hv3p3
+'''
+
 import asyncio
 import copy
 from modules.module import Module
