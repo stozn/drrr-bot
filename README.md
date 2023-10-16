@@ -43,7 +43,7 @@ tc = mytc123
 avatar = setton
 
 # 房间ID
-roomID = 20k1IWNIkG
+roomID = 6JjYq34S35
 
 # 用户代理
 agent = Bot
@@ -57,7 +57,7 @@ throttle = 1.5
 
 * 如果你想将某项配置保持默认，可以删除那一行。
 * Tripcode（`tc`）可选。如果想无tc登录，只需删除该行或设置为`None`。
-* `RoomID`可以在房间的URL中找到，例如：https://drrr.com/room/20k1IWNIkG 中`20k1IWNIkG`就是房间ID。
+* `RoomID`可以在房间的URL中找到，例如：https://drrr.com/room/6JjYq34S35 中`6JjYq34S35`就是房间ID。
 * 推荐将`throttle`设置为至少`1秒`，如果发送消息太快，你的IP可能会被封禁。
 * Cookies将以Bot的用户名为文件名保存在`cookies`文件夹中。如果想重置Cookies，只需删除该文件夹下对应的文件。
 * 头像参考[这里](#avatar)。
