@@ -14,7 +14,7 @@ defaultConfig = {
   'tc': 'None',
   'avatar': 'setton',
   'agent': 'Bot',
-  'roomID': 'gV8M14bkrv',
+  'roomID': '20k1IWNIkG',
   'throttle': 1.5,
   'mods' : ['Test', 'BingTa']
 }

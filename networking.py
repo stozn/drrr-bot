@@ -242,7 +242,8 @@ class Connection:
                         else:
                             self.warning('已不在房间中')
                     else:
-                        self.warning('房间不存在或未登录') 
+                        self.warning('未登录') 
+                        await self.login()
                     return
             except aiohttp.client_exceptions.ContentTypeError:
                 self.error(f"进入房间失败2: {resp_json['error']}")
@@ -295,11 +296,12 @@ class Connection:
                         resp_json = json.loads(resp)
                         self.debug(f"更新房间信息失败: {resp_json['error']}")
                         self.room_connected = False
-                        return
+                        break
                     
                     stat = resp.status   
                     if stat == 200:
-                        if  datetime.datetime.now().minute%10 == 0 and datetime.datetime.now().second<5:
+                        now = datetime.datetime.now()
+                        if  now.minute % 2 and now.second<3:
                                             self.dm(self.own_user.id, 'keep')
                         if 'talks' in resp_parsed:
                             try:
@@ -383,14 +385,14 @@ class Connection:
                                 pass
                             else:
                                 # self.exit_loop = True
-                                self.error('房间信息更新失败:1')
+                                self.error('房间信息更新失败1')
                                 break
 
                         else:
                             self.debug('空闲状态')
                             self.last_error = False
 
-                        self.room.update = resp_parsed['update']
+                        self.room.update = resp_parsed['update'] | self.room.update
                     else:
                         self.error('无效信息')
                         self.error(traceback.format_exc())

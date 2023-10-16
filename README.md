@@ -43,7 +43,7 @@ tc = mytc123
 avatar = setton
 
 # 房间ID
-roomID = gV8M14bkrv
+roomID = 20k1IWNIkG
 
 # 用户代理
 agent = Bot
