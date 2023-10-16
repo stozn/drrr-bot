@@ -382,7 +382,7 @@ class Connection:
                         elif 'error' in resp_parsed:
                             if not self.last_error:
                                 self.last_error = True
-                                pass
+                                continue
                             else:
                                 # self.exit_loop = True
                                 self.error('房间信息更新失败1')
@@ -392,7 +392,7 @@ class Connection:
                             self.debug('空闲状态')
                             self.last_error = False
 
-                        self.room.update = resp_parsed['update'] | self.room.update
+                        self.room.update = resp_parsed['update']
                     else:
                         self.error('无效信息')
                         self.error(traceback.format_exc())
