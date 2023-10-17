@@ -102,7 +102,7 @@ class Test(Module):
 如果你想添加更多的功能，只需在`cmd_dict`字典中添加对应的函数名和指令正则表达式，并在类中实现响应函数即可。  
 具体的正则表达式语法请参考[Python 正则表达式文档](https://docs.python.org/zh-cn/3/library/re.html)，其他API见下方（更多的信息在源代码中）。  
   
-另外，`modules/GuessNumber.py`还包含了一个简单的猜数字游戏，可供参考。
+另外，`modules` 文件夹下还包含了一个简单的猜数字游戏(`GuessNumber.py`)，可供参考。
 
 
 ## API
