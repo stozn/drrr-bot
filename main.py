@@ -16,7 +16,7 @@ defaultConfig = {
   'agent': 'Bot',
   'roomID': '6JjYq34S35',
   'throttle': 1.5,
-  'mods' : ['Test', 'BingTa']
+  'mods' : ['Test', 'GuessNumber']
 }
 
 config = copy.deepcopy(defaultConfig)

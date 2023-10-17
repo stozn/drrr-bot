@@ -14,7 +14,7 @@ roomID = 6JjYq34S35
 agent = Bot
 
 # 加载的模块
-mods = Test, BingTa
+mods = Test, GuessNumber
 
 # 发送消息的等待时间（秒）
 throttle = 1.5
