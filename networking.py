@@ -128,23 +128,24 @@ class Connection:
         cookies_file = f'{self.cookie_path}/{self.username}.cookie'
         if os.path.isfile(cookies_file):
             await self.resume(cookies_file)
-        else:
-            self.info('没有已保存的cookie，新建登录中')
-            token = await self.get_login_token()
-            if token is not None:
-                stat, resp, cookie_jar = await self.post_login(token)
-                self.debug(f'status: {stat}, resp: {resp}')
-                resp_parsed = json.loads(resp)
-                if stat == 200:
-                    if resp_parsed['message'] == 'ok':
-                        cookie_jar.save(cookies_file)
-                        self.info('登录成功，已保存cookie')
-                        await self.join_room(self.roomID)
-                            
-                    else:
-                        self.warning('not ok???')
+            return
+
+        self.info('新建登录中')
+        token = await self.get_login_token()
+        if token is not None:
+            stat, resp, cookie_jar = await self.post_login(token)
+            self.debug(f'status: {stat}, resp: {resp}')
+            resp_parsed = json.loads(resp)
+            if stat == 200:
+                if resp_parsed['message'] == 'ok':
+                    cookie_jar.save(cookies_file)
+                    self.info('登录成功，已保存cookie')
+                    await self.join_room(self.roomID)
+                        
                 else:
-                    self.error(f"登录失败: {resp_parsed['error']}")
+                    self.warning('not ok???')
+            else:
+                self.error(f"登录失败: {resp_parsed['error']}")
 
     # 恢复登录
     async def resume(self, cookies_file):
@@ -159,11 +160,13 @@ class Connection:
                 await self.start_loop()
                 
             else:
-                self.warning('已不在房间，请重新进入房间')
+                self.warning('已不在房间中')
                 await self.join_room(self.roomID)
                 
         elif stat == 401:
-            self.warning('保存的cookie无效， 请重新登录')
+            self.warning('保存的cookie无效， 已删除该文件')
+            os.remove(cookies_file)
+            await self.login()
         else:
             self.error('恢复连接时发生错误')   
 
@@ -240,7 +243,8 @@ class Connection:
                             await self.start_loop()
                             
                         else:
-                            self.warning('已不在房间中')
+                            self.warning('进入房间失败：无法更新房间信息')
+                            await self.join_room(self.roomID)
                     else:
                         self.warning('未登录') 
                         await self.login()
@@ -413,18 +417,19 @@ class Connection:
             try:
                 outgoing_msg = await self.sendQ.get()
                 type = outgoing_msg.type
-                msg = outgoing_msg.msg
 
                 if self.room_connected:
                     data = None
                     if type == popyo.Outgoing_Message_Type.message:
-                        data = {'message': msg}
+                        data = {'message': outgoing_msg.msg}
                     elif type == popyo.Outgoing_Message_Type.dm:
-                        data = {'message': msg,'to': outgoing_msg.receiver}
+                        data = {'message': outgoing_msg.msg,'to': outgoing_msg.receiver}
                     elif type == popyo.Outgoing_Message_Type.url:
-                        data = {'message': msg, 'url': outgoing_msg.url}
+                        data = {'message': outgoing_msg.msg, 'url': outgoing_msg.url}
                     elif type == popyo.Outgoing_Message_Type.dm_url:
-                        data = {'message': msg, 'url': outgoing_msg.url, 'to': outgoing_msg.receiver}
+                        data = {'message': outgoing_msg.msg, 'url': outgoing_msg.url, 'to': outgoing_msg.receiver}
+                    elif type == popyo.Outgoing_Message_Type.music:
+                        data = {'music': 'music', 'name': outgoing_msg.name, 'url': outgoing_msg.url}
 
                     t1 = time.time()
                     if (t1 - t) < self.throttle:
@@ -471,6 +476,12 @@ class Connection:
         async def run_sendQ():
             for msg in msgs:
                 await self.sendQ.put(msg)
+        asyncio.run_coroutine_threadsafe(run_sendQ(), self.loop)
+    
+    # 添加待发送URL
+    def music(self, name, url):
+        async def run_sendQ():
+            await self.sendQ.put(popyo.OutgoingMusic(name, url))
         asyncio.run_coroutine_threadsafe(run_sendQ(), self.loop)
 
     # 发送消息

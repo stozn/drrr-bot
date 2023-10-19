@@ -34,3 +34,9 @@ class OutgoingDmUrl:
         self.msg = msg
         self.receiver = receiver
         self.url = url
+
+class OutgoingMusic:
+    def __init__(self, name, url):
+        self.type = Outgoing_Message_Type.music
+        self.name = name
+        self.url = url
