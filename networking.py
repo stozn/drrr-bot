@@ -143,7 +143,8 @@ class Connection:
                     await self.join_room(self.roomID)
                         
                 else:
-                    self.warning('not ok???')
+                    self.warning(f'message: {resp_parsed["message"]}, try again...')
+                    await self.login()
             else:
                 self.error(f"登录失败: {resp_parsed['error']}")
 
