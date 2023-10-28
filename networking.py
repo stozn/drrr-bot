@@ -408,6 +408,8 @@ class Connection:
                 self.error('房间信息更新失败:2')
                 self.error(traceback.format_exc())
                 await asyncio.sleep(1)
+                await self.join_room(self.roomID)
+                break
         await self.join_room(self.roomID)
 
     # 消息循环
