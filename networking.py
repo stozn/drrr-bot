@@ -390,7 +390,8 @@ class Connection:
                                 continue
                             else:
                                 # self.exit_loop = True
-                                self.error('房间信息更新失败1')
+                                self.error('房间信息更新失败:1')
+                                await self.join_room(self.roomID)
                                 break
 
                         else:

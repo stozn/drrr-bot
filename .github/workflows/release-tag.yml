@@ -1,0 +1,45 @@
+name: CI Create Release
+
+on:
+  push:
+    tags:
+      - 'v*' 
+
+jobs:
+  build:
+    name: Create Release
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        
+      - name: Clone py-win repository
+        run: |
+          tag_name=${{ github.ref }}
+          tag_name=${tag_name#refs/tags/}
+          echo "tag_name=${tag_name}" >> $GITHUB_ENV
+          git clone https://github.com/stozn/py-win.git ../drrr-bot-${tag_name}
+   
+      - name: Compress source code and py-win
+        run: |
+          mv ./* ../drrr-bot-${tag_name}/
+          rm -rf ../drrr-bot-${tag_name}/.github
+          echo "zip_name=drrr-bot-${tag_name}.zip" >> $GITHUB_ENV
+          cd ..
+          zip -r drrr-bot/drrr-bot-${tag_name}.zip drrr-bot-${tag_name}/*
+          cd drrr-bot
+      
+
+      - name: Create Release
+        id: create_release
+        uses: softprops/action-gh-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.TOKEN }} 
+        with:
+          name: Release ${{env.tag_name}}
+          body: |
+            这个压缩包是包含了便携版python的，可以直接运行`启动.bat`来运行，无需自行安装python和配置环境。
+          files: ${{env.zip_name}}
+          draft: false
+          prerelease: false
