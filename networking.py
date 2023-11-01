@@ -236,7 +236,7 @@ class Connection:
                         self.error(f"进入房间失败1: {resp_json['error']}")
                         return
                   
-                    if stat == 200 and resp_json['message'] == 'ok' and resp_json['redirect'] == 'room':
+                    if stat == 200 and 'message' in resp_json and resp_json['message'] == 'ok' and resp_json['redirect'] == 'room':
                         await self.update_room_state()
                         if self.room is not None:
                             self.room_connected = True
@@ -244,6 +244,7 @@ class Connection:
                             await self.start_loop()
                             
                         else:
+                            print(resp_json)
                             self.warning('进入房间失败：无法更新房间信息')
                             await self.join_room(self.roomID)
                     else:
