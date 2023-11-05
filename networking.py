@@ -182,39 +182,38 @@ class Connection:
         
     # 更新房间信息
     async def update_room_state(self, preserve_banned=False):
-        for _ in range(self.retries):
-            try:
-                session = await self.get_session()
-                async with session.get(self.endpoint + '/json.php?fast=1') as resp:
-                    if resp.status == 200:
-                        content_type = resp.headers.get('Content-Type', '').lower()
-                        resp_parsed = None
-                        if 'application/json' in content_type:
-                            resp_parsed = await resp.json()
-                        else:
-                            resp = await resp.text()
-                            resp_json = json.loads(resp)
-                            self.error(f"更新房间信息失败1: {resp_json['error']}")
-                            return
+        try:
+            session = await self.get_session()
+            async with session.get(self.endpoint + '/json.php?fast=1') as resp:
+                if resp.status == 200:
+                    content_type = resp.headers.get('Content-Type', '').lower()
+                    resp_parsed = None
+                    if 'application/json' in content_type:
+                        resp_parsed = await resp.json()
+                    else:
+                        resp = await resp.text()
+                        resp_json = json.loads(resp)
+                        self.error(f"更新房间信息失败1: {resp_json['error']}")
+                        return
 
-                        users = {}
+                    users = {}
 
-                        if 'roomId' in resp_parsed:
-                            for user in resp_parsed['users']:
-                                users[user['id']] = popyo.User(user['id'], user['name'], user['icon'],
-                                                               user['tripcode'] if 'tripcode' in user.keys() else '无', user['device'],
-                                                               True if 'admin' in user.keys() and user['admin'] else False)
+                    if 'roomId' in resp_parsed:
+                        for user in resp_parsed['users']:
+                            users[user['id']] = popyo.User(user['id'], user['name'], user['icon'],
+                                                            user['tripcode'] if 'tripcode' in user.keys() else '无', user['device'],
+                                                            True if 'admin' in user.keys() and user['admin'] else False)
 
-                            banned_ids = self.room.banned_ids if preserve_banned else set()
-                            self.room = popyo.Room(resp_parsed['name'], resp_parsed['description'], resp_parsed['limit'], users, resp_parsed['language'],
-                                                   resp_parsed['roomId'], resp_parsed['music'], False, False, resp_parsed['host'], resp_parsed['update'])
-                            if 'np' in resp_parsed:
-                                self.room.music_np = resp_parsed['np']
-                            self.room.banned_ids = banned_ids
-                    return
-            except Exception:
-                self.error(f"更新房间信息失败2: {resp_json['error']}")
-                self.error(traceback.format_exc())
+                        banned_ids = self.room.banned_ids if preserve_banned else set()
+                        self.room = popyo.Room(resp_parsed['name'], resp_parsed['description'], resp_parsed['limit'], users, resp_parsed['language'],
+                                                resp_parsed['roomId'], resp_parsed['music'], False, False, resp_parsed['host'], resp_parsed['update'])
+                        if 'np' in resp_parsed:
+                            self.room.music_np = resp_parsed['np']
+                        self.room.banned_ids = banned_ids
+                return
+        except Exception:
+            self.error(f"更新房间信息失败2: {resp_json['error']}")
+            self.error(traceback.format_exc())
 
     # 进入房间
     async def join_room(self, room_id):
