@@ -319,7 +319,7 @@ class Connection:
                                         self.info(info)
                                         await self.write('logs', msg.user.name + ',' + msg.user.tc + ',' + msg.message.replace('\n', '\\n').replace(',', '，'), 'csv')
 
-                                    if msg.type == popyo.Message_Type.message:
+                                    if msg.type in [popyo.Message_Type.message, popyo.Message_Type.me, popyo.Message_Type.dm]:
                                         await self.msg_cb(msg)
 
                                     elif msg.type == popyo.Message_Type.join:
