@@ -212,7 +212,7 @@ class Connection:
                         self.room.banned_ids = banned_ids
                 return
         except Exception:
-            self.error(f"更新房间信息失败2: {resp_json['error']}")
+            self.error(f"更新房间信息失败2")
             self.error(traceback.format_exc())
 
     # 进入房间
