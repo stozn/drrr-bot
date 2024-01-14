@@ -289,6 +289,7 @@ class Connection:
             except Exception:
                 self.debug(traceback.format_exc())
 
+        last = datetime.datetime.now()
         while self.room_connected:
             try:
                 async with session.get(self.endpoint + '/json.php?update=' + str(self.room.update), timeout=10) as resp:
@@ -306,14 +307,16 @@ class Connection:
                     stat = resp.status   
                     if stat == 200:
                         now = datetime.datetime.now()
-                        if  now.minute % 2 and now.second<3:
-                                            self.dm(self.own_user.id, 'keep')
+                        if (now - last).seconds > 60:
+                            self.dm(self.own_user.id, 'keep')
+                            last = now
+                            print('keep')
                         if 'talks' in resp_parsed:
                             try:
                                 msgs = popyo.talks_to_msgs(resp_parsed['talks'], self.room)
                                 for msg in [x for x in msgs if x is not None]:
 
-                                    if msg.message:
+                                    if msg.message and msg.message != 'keep':
                                         info = f'{msg.user} | {msg.message}'
                                         self.info(info)
                                         await self.write('logs', msg.user.name + ',' + msg.user.tc + ',' + msg.message.replace('\n', '\\n').replace(',', '，'), 'csv')
