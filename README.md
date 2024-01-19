@@ -58,8 +58,9 @@ throttle = 1.5
 * `RoomID`可以在房间的URL中找到，例如：https://drrr.com/room/6JjYq34S35 中`6JjYq34S35`就是房间ID。
 * 推荐将`throttle`设置为至少`1秒`，如果发送消息太快，你的IP可能会被封禁。
 * Cookies将以Bot的用户名为文件名保存在`cookies`文件夹中。如果想重置Cookies，只需删除该文件夹下对应的文件。
+* 模块的`文件名`和`主类名`必须一致，在配置文件的`mods`项加入模块的名字即可启用模块，以英文逗号分隔
+* 更多模块可以参考[drrr-modules](https://github.com/stozn/drrr-modules)仓库。
 * 头像参考[这里](#avatar)。
-
 
 
 
