@@ -1,6 +1,4 @@
-# DrrrBot
-
-简体中文
+# Drrr-Bot
 
 一个用于 [drrr.com](https://drrr.com) 的Python版Bot
 
