@@ -316,6 +316,11 @@ class Connection:
                                 msgs = popyo.talks_to_msgs(resp_parsed['talks'], self.room)
                                 for msg in [x for x in msgs if x is not None]:
 
+                                    if msg.message == '/stop':
+                                        self.send('已停止运行')
+                                        await asyncio.sleep(2)
+                                        sys.exit(0)
+
                                     if msg.message and msg.message != 'keep':
                                         info = f'{msg.user} | {msg.message}'
                                         self.info(info)
