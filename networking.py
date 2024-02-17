@@ -322,9 +322,11 @@ class Connection:
                                         sys.exit(0)
 
                                     if msg.message and msg.message != 'keep':
-                                        info = f'{msg.user} | {msg.message}'
+                                        user = getattr(msg, 'user', getattr(msg, 'to', '系统消息'))
+                                        info = f"{user} | {msg.message}"
                                         self.info(info)
-                                        await self.write('logs', msg.user.name + ',' + msg.user.tc + ',' + msg.message.replace('\n', '\\n').replace(',', '，'), 'csv')
+                                        userInfo = user if type(user) is str else user.name + ',' + user.tc
+                                        await self.write('logs', userInfo + ',' + msg.message.replace('\n', '\\n').replace(',', '，'), 'csv')
 
                                     if msg.type in [popyo.Message_Type.message, popyo.Message_Type.me, popyo.Message_Type.dm]:
                                         await self.msg_cb(msg)
@@ -490,7 +492,7 @@ class Connection:
                 await self.sendQ.put(msg)
         asyncio.run_coroutine_threadsafe(run_sendQ(), self.loop)
     
-    # 添加待发送URL
+    # 播放歌曲
     def music(self, name, url):
         async def run_sendQ():
             await self.sendQ.put(popyo.OutgoingMusic(name, url))
