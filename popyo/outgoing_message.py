@@ -8,8 +8,9 @@ class Outgoing_Message_Type(Enum):
     url = 4
     dm_url = 5
     kick = 6
-    action = 7
-    direct_action = 8
+    ban = 7
+    change_title = 8
+    change_description = 9
 
 class OutgoingMessage:
     def __init__(self, msg):
@@ -40,3 +41,28 @@ class OutgoingMusic:
         self.type = Outgoing_Message_Type.music
         self.name = name
         self.url = url
+
+class OutgoingHandoverHost:
+    def __init__(self, receiver):
+        self.type = Outgoing_Message_Type.handover_host
+        self.receiver = receiver
+
+class OutgoingKick:
+    def __init__(self, receiver):
+        self.type = Outgoing_Message_Type.kick
+        self.receiver = receiver
+
+class OutgoingBan:
+    def __init__(self, receiver):
+        self.type = Outgoing_Message_Type.ban
+        self.receiver = receiver
+
+class OutgoingChangeTitle:
+    def __init__(self, title):
+        self.type = Outgoing_Message_Type.change_title
+        self.title = title
+
+class OutgoingChangeDescription:
+    def __init__(self, description):
+        self.type = Outgoing_Message_Type.change_description
+        self.description = description

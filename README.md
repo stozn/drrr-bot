@@ -77,10 +77,12 @@ class Test(Module):
 
     @property
     def cmds(self):
-        # 指令字典，格式为：{函数名: 指令正则表达式}
+        # 指令字典，格式为：{函数名: 消息指令正则表达式}
         cmd_dict = {
                     'sayHello': r'hi',
-                    'calculate': r'^\/calc\s+\d+\s+[\+\-\*\/]\s+\d+\s*$'
+                    'calculate': r'^\/calc\s+\d+\s+[\+\-\*\/]\s+\d+\s*$',
+                    'chown': r'^\/chown',
+                    'welcome': r'^进入房间$',  # 进入房间的消息默认是 "进入房间" 这个字符串，它不是一般发言消息
                     }
         return cmd_dict
     
@@ -91,13 +93,19 @@ class Test(Module):
         cont = msg.message.split(' ', 1)[1]
         result = eval(cont)
         self.bot.send(cont + ' = ' + str(result))
-        
+    
+    def chown(self, msg):
+        self.bot.chown(msg.user.id)
+    
+    def welcome(self, msg):
+        self.bot.send(f'欢迎@{msg.user.name}进入房间')
 ```
-![聊天室截图](example.png)
+![聊天室截图](example.jpg)
 
-这段代码实现了两个功能：打招呼（`sayHello`）和计算功能（`calculate`）。  
-`cmd_dict`字典是指令字典，键为函数名，值为指令的正则表达式。  
-当有消息发送到聊天室时，Bot会遍历`cmd_dict`字典，如果消息的内容匹配某个正则表达式，就会调用对应的函数进行响应。  
+这段代码实现了四个功能：打招呼（`sayHello`）、计算器（`calculate`）、移交房主（`chown`）和进房欢迎（`welcome`）。  
+`cmd_dict`字典是指令字典，键为函数名，值为消息指令的正则表达式。  
+当有消息发送到聊天室时，Bot会遍历`cmd_dict`字典，如果消息的内容匹配某个正则表达式，就会调用对应的函数进行响应。 
+进入房间的响应消息不是一般消息，它的消息指令固定是`"进入房间"`这个字符串，所以如果你想响应进入房间的消息，可以参考`welcome`的写法
 如果你想添加更多的功能，只需在`cmd_dict`字典中添加对应的函数名和指令正则表达式，并在类中实现响应函数即可。  
 具体的正则表达式语法请参考[Python 正则表达式文档](https://docs.python.org/zh-cn/3/library/re.html)，其他API见下方（更多的信息在源代码中）。  
   
@@ -112,11 +120,21 @@ msg.user: 发送消息的用户
     msg.user.name: 用户名
     msg.user.id: 用户ID (用于发送私信)
     msg.user.tc: 用户Tripcode
-msg.type: 消息类型 (message, me, dm, ...)
+msg.type: 消息类型 (message, me, dm, join, leave, ...)
 
 self.bot: Bot对象
     self.bot.send(text): 发送消息
     self.bot.dm(userId, text): 发送私信
+    self.bot.send_url(text, url): 发送带链接的消息
+    self.bot.dm_url(userId, text, url): 发送带链接的私信
+    self.bot.music(name, url): 发送音乐
+    self.bot.chown(userId): 移交房主
+    self.bot.kick(userId): 将用户踢出房间
+    self.bot.ban(userId): 禁止用户进入房间
+    self.bot.title(title): 设置房间标题
+    self.bot.desc(desc): 设置房间描述
+    self.bot.findUser(name): 使用用户名查找用户ID
+    self.bot.findUser(tc=tc): 使用用户Tripcode查找用户ID
 ```
 
 
