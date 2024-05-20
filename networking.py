@@ -214,6 +214,14 @@ class Connection:
         except Exception:
             self.error(f"更新房间信息失败2")
             self.error(traceback.format_exc())
+    
+    def findUser(self, name=None, tc=None):
+        for user in self.room.users.values():
+            if tc and user.tc == tc:
+                return user.id
+            if name and user.name == name:
+                return user.id
+        return None
 
     # 进入房间
     async def join_room(self, room_id):
@@ -333,6 +341,7 @@ class Connection:
 
                                     elif msg.type == popyo.Message_Type.join:
                                         await self.update_room_state()
+                                        await self.msg_cb(msg)
 
                                     elif msg.type == popyo.Message_Type.leave:
                                         if msg.user.id == self.own_user.id:
@@ -343,6 +352,7 @@ class Connection:
                                             break
                                         else:
                                             await self.update_room_state()
+                                            await self.msg_cb(msg)
 
                                     elif msg.type == popyo.Message_Type.new_host:
                                         self.room.host_id = msg.user.id
@@ -422,82 +432,7 @@ class Connection:
                 await self.join_room(self.roomID)
                 break
         await self.join_room(self.roomID)
-
-    # 消息循环
-    async def send_loop(self):
-        self.debug('开始消息循环')
-        t = time.time()
-        while self.room_connected:
-            try:
-                outgoing_msg = await self.sendQ.get()
-                type = outgoing_msg.type
-
-                if self.room_connected:
-                    data = None
-                    if type == popyo.Outgoing_Message_Type.message:
-                        data = {'message': outgoing_msg.msg}
-                    elif type == popyo.Outgoing_Message_Type.dm:
-                        data = {'message': outgoing_msg.msg,'to': outgoing_msg.receiver}
-                    elif type == popyo.Outgoing_Message_Type.url:
-                        data = {'message': outgoing_msg.msg, 'url': outgoing_msg.url}
-                    elif type == popyo.Outgoing_Message_Type.dm_url:
-                        data = {'message': outgoing_msg.msg, 'url': outgoing_msg.url, 'to': outgoing_msg.receiver}
-                    elif type == popyo.Outgoing_Message_Type.music:
-                        data = {'music': 'music', 'name': outgoing_msg.name, 'url': outgoing_msg.url}
-
-                    t1 = time.time()
-                    if (t1 - t) < self.throttle:
-                        await asyncio.sleep(self.throttle - t1 + t)
-                    await self.send_post(data)
-                    t = time.time()
-            except Exception:
-                self.error('消息发送失败')
-                self.debug(traceback.format_exc())
-
-    # 添加待发送消息
-    def send(self, msg):
-        chunked = [msg[i:i + self.char_limit] for i in range(0, len(msg), self.char_limit)]
-        msgs = [popyo.OutgoingMessage(chunk) for chunk in chunked]
-        async def run_sendQ():
-            for msg in msgs:
-                await self.sendQ.put(msg)
-        asyncio.run_coroutine_threadsafe(run_sendQ(), self.loop)
-
-     # 添加待发送私信
-    def dm(self, receiver, msg):
-        chunked = [msg[i:i + self.char_limit] for i in range(0, len(msg), self.char_limit)]
-        msgs = [popyo.OutgoingDirectMessage(chunk, receiver) for chunk in chunked]
-        async def run_sendQ():
-            for msg in msgs:
-                await self.sendQ.put(msg)
-        asyncio.run_coroutine_threadsafe(run_sendQ(), self.loop)
-
-     # 添加待发送URL
-    def send_url(self, msg, url):
-        chunked = [msg[i : i + self.char_limit] for i in range(0, len(msg), self.char_limit)]
-        msgs = [popyo.OutgoingMessage(chunk) for chunk in chunked[:-1]]
-        msgs.append(popyo.OutgoingUrlMessage(chunked[-1], url))
-        async def run_sendQ():
-            for msg in msgs:
-                await self.sendQ.put(msg)
-        asyncio.run_coroutine_threadsafe(run_sendQ(), self.loop)
     
-    # 添加待发送私信URL
-    def dm_url(self, receiver, msg, url):
-        chunked = [msg[i:i + self.char_limit] for i in range(0, len(msg), self.char_limit)]
-        msgs = [popyo.OutgoingDirectMessage(chunk, receiver) for chunk in chunked[:-1] ]
-        msgs.append(popyo.OutgoingDmUrl(chunked[-1], receiver, url))
-        async def run_sendQ():
-            for msg in msgs:
-                await self.sendQ.put(msg)
-        asyncio.run_coroutine_threadsafe(run_sendQ(), self.loop)
-    
-    # 播放歌曲
-    def music(self, name, url):
-        async def run_sendQ():
-            await self.sendQ.put(popyo.OutgoingMusic(name, url))
-        asyncio.run_coroutine_threadsafe(run_sendQ(), self.loop)
-
     # 发送消息
     async def send_post(self, data):
         for _ in range(self.retries):
@@ -512,4 +447,110 @@ class Connection:
                 self.error(traceback.format_exc())
                 await asyncio.sleep(1)
 
+    # 消息循环
+    async def send_loop(self):
+        self.debug('开始消息循环')
+        t2 = time.time()
+        while self.room_connected:
+            try:
+                out_msg = await self.sendQ.get()
+                type = out_msg.type
+
+                if self.room_connected:
+                    data = None
+                    if type == popyo.Outgoing_Message_Type.message:
+                        data = {'message': out_msg.msg}
+                    elif type == popyo.Outgoing_Message_Type.dm:
+                        data = {'message': out_msg.msg,'to': out_msg.receiver}
+                    elif type == popyo.Outgoing_Message_Type.url:
+                        data = {'message': out_msg.msg, 'url': out_msg.url}
+                    elif type == popyo.Outgoing_Message_Type.dm_url:
+                        data = {'message': out_msg.msg, 'url': out_msg.url, 'to': out_msg.receiver}
+                    elif type == popyo.Outgoing_Message_Type.music:
+                        data = {'music': 'music', 'name': out_msg.name, 'url': out_msg.url}
+                    elif type == popyo.Outgoing_Message_Type.handover_host:
+                        data = {'new_host': out_msg.receiver}
+                    elif type == popyo.Outgoing_Message_Type.kick:
+                        data = {'kick': out_msg.receiver}
+                    elif type == popyo.Outgoing_Message_Type.ban:
+                        data = {'report_and_ban_user': out_msg.receiver}
+                    elif type == popyo.Outgoing_Message_Type.change_title:
+                        data = {'room_name': out_msg.title}
+                    elif type == popyo.Outgoing_Message_Type.change_description:
+                        data = {'room_description': out_msg.description}
+
+                    t1 = time.time()
+                    await self.send_post(data)
+                    if t1 - t2 < self.throttle or not self.sendQ.empty():
+                        await asyncio.sleep(self.throttle - t1 + t2)
+                    t2 = time.time()
+            except Exception:
+                self.error('消息发送失败')
+                self.debug(traceback.format_exc())
+    
+    async def putQ(self, msgs):
+        for msg in msgs:
+            await self.sendQ.put(msg)
+
+    # 发送消息
+    def send(self, msg):
+        chunked = [msg[i:i + self.char_limit] for i in range(0, len(msg), self.char_limit)]
+        msgs = [popyo.OutgoingMessage(chunk) for chunk in chunked]
+        asyncio.run_coroutine_threadsafe(self.putQ(msgs), self.loop)
+
+     # 发送私信
+    def dm(self, receiver, msg):
+        chunked = [msg[i:i + self.char_limit] for i in range(0, len(msg), self.char_limit)]
+        msgs = [popyo.OutgoingDirectMessage(chunk, receiver) for chunk in chunked]
+        asyncio.run_coroutine_threadsafe(self.putQ(msgs), self.loop)
+
+     # 发送URL
+    def send_url(self, msg, url):
+        chunked = [msg[i : i + self.char_limit] for i in range(0, len(msg), self.char_limit)]
+        msgs = [popyo.OutgoingMessage(chunk) for chunk in chunked[:-1]]
+        msgs.append(popyo.OutgoingUrlMessage(chunked[-1], url))
+        asyncio.run_coroutine_threadsafe(self.putQ(msgs), self.loop)
+    
+    # 发送私信URL
+    def dm_url(self, receiver, msg, url):
+        chunked = [msg[i:i + self.char_limit] for i in range(0, len(msg), self.char_limit)]
+        msgs = [popyo.OutgoingDirectMessage(chunk, receiver) for chunk in chunked[:-1] ]
+        msgs.append(popyo.OutgoingDmUrl(chunked[-1], receiver, url))
         
+        asyncio.run_coroutine_threadsafe(self.putQ(msgs), self.loop)
+    
+    # 播放歌曲
+    def music(self, name, url):
+        async def putQ():
+            await self.sendQ.put(popyo.OutgoingMusic(name, url))
+        asyncio.run_coroutine_threadsafe(putQ(), self.loop)
+
+    # 更换房主
+    def chown(self, receiver):
+        async def putQ():
+            await self.sendQ.put(popyo.OutgoingHandoverHost(receiver))
+        asyncio.run_coroutine_threadsafe(putQ(), self.loop)
+    
+    # 踢出用户
+    def kick(self, receiver):
+        async def putQ():
+            await self.sendQ.put(popyo.OutgoingKick(receiver))
+        asyncio.run_coroutine_threadsafe(putQ(), self.loop)
+    
+    # 封禁用户
+    def ban(self, receiver):
+        async def putQ():
+            await self.sendQ.put(popyo.OutgoingBan(receiver))
+        asyncio.run_coroutine_threadsafe(putQ(), self.loop)
+    
+    # 更改房间名
+    def title(self, name):
+        async def putQ():
+            await self.sendQ.put(popyo.OutgoingChangeTitle(name))
+        asyncio.run_coroutine_threadsafe(putQ(), self.loop)
+    
+    # 更改房间描述
+    def desc(self, description):
+        async def putQ():
+            await self.sendQ.put(popyo.OutgoingChangeDescription(description))
+        asyncio.run_coroutine_threadsafe(putQ(), self.loop)
