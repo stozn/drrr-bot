@@ -64,7 +64,7 @@ def talk_to_msg(msg, room):
     elif msg['type'] == 'async-response':
         # id, time, secret, to, message, title, level, stop_fetching)
         m = AsyncResponse(msg['id'], msg['time'], msg['secret'],room.users.get(msg['to']['id'], None), msg['message'],
-                          msg['title'], msg['level'], msg['stop-fetching'])
+                          msg['title'], msg['level'], None)
 
     elif msg['type'] == 'kick':
         m = KickMessage(msg['id'], msg['time'],room.users.get(msg['to']['id'], None), msg['message'])
