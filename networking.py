@@ -15,7 +15,7 @@ path = os.path.dirname(__file__)
 sys.path.append(path)
 
 class Connection:
-    def __init__(self, username, tc, avater, roomID, agent, throttle, msg_cb, loop):
+    def __init__(self, username, tc, avater, roomID, agent, throttle, qps, msg_cb, loop):
         self.username = username
         self.tc = tc
         self.avatar = avater
@@ -36,7 +36,7 @@ class Connection:
         # aiohttp 新版 CookieJar 需要运行中的 event loop，传入显式 loop
         self.cookie_jar = aiohttp.CookieJar(unsafe=True, loop=self.loop)
         # 全局 QPS 限速：所有请求之间至少间隔 qps_interval 秒，防止被网站封禁
-        self.qps_interval = 2.5
+        self.qps_interval = max(qps, 0)
         self._qps_last = 0.0
         self._qps_lock = asyncio.Lock()
         # 使用模块级 logger，继承根 logger 的配置（由 main.py 的 basicConfig 统一管理）

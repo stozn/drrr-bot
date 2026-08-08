@@ -26,12 +26,14 @@ DEFAULT_CONFIG = {
     'agent': 'Bot',
     'roomID': '6JjYq34S35',
     'throttle': 1.5,
-    'mods': ['Test', 'GuessNumber'],
+    'qps': 0.5,
+    'mods': ['test', 'guess_number'],
 }
 
 # 需要做类型转换的字段：{字段名: (类型转换函数, 是否列表)}
 _TYPE_RULES = {
     'throttle': (float, False),
+    'qps': (float, False),
     'mods': (lambda s: [x.strip() for x in s.split(',')], True),
 }
 
@@ -163,7 +165,7 @@ def main():
 
     bot = networking.Connection(
         config['name'], config['tc'], config['avatar'], config['roomID'],
-        config['agent'], config['throttle'],
+        config['agent'], config['throttle'], config['qps'],
         lambda msg: handler(msg, loop), loop,
     )
     for mod in config['mods']:
