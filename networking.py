@@ -39,6 +39,8 @@ class Connection:
         self.qps_interval = max(qps, 0)
         self._qps_last = 0.0
         self._qps_lock = asyncio.Lock()
+        # 已处理消息 id 集合，用于去除服务器重复返回的历史消息
+        self._processed_msg_ids = set()
         # 使用模块级 logger，继承根 logger 的配置（由 main.py 的 basicConfig 统一管理）
         self.logger = logging.getLogger(__name__)
         self.logger.setLevel(logging.DEBUG)
@@ -376,6 +378,15 @@ class Connection:
                             try:
                                 msgs = popyo.talks_to_msgs(resp_parsed['talks'], self.room)
                                 for msg in [x for x in msgs if x is not None]:
+                                    # 去重：跳过服务器重复返回的已处理消息
+                                    if getattr(msg, 'id', None) is not None:
+                                        if msg.id in self._processed_msg_ids:
+                                            continue
+                                        self._processed_msg_ids.add(msg.id)
+                                        # 防止集合无限增长，只保留最近处理过的 id
+                                        if len(self._processed_msg_ids) > 2000:
+                                            self._processed_msg_ids = set(
+                                                list(self._processed_msg_ids)[-1000:])
 
                                     if msg.message == '/stop':
                                         self.send('已停止运行')
