@@ -27,6 +27,8 @@ DEFAULT_CONFIG = {
     'roomID': '6JjYq34S35',
     'throttle': 1.5,
     'qps': 0.5,
+    'poll_interval': 3.0,
+    'admin_tc': '',
     'mods': ['test', 'guess_number'],
 }
 
@@ -34,6 +36,7 @@ DEFAULT_CONFIG = {
 _TYPE_RULES = {
     'throttle': (float, False),
     'qps': (float, False),
+    'poll_interval': (float, False),
     'mods': (lambda s: [x.strip() for x in s.split(',')], True),
 }
 
@@ -165,7 +168,7 @@ def main():
 
     bot = networking.Connection(
         config['name'], config['tc'], config['avatar'], config['roomID'],
-        config['agent'], config['throttle'], config['qps'],
+        config['agent'], config['throttle'], config['qps'], config['poll_interval'],
         lambda msg: handler(msg, loop), loop,
     )
     for mod in config['mods']:

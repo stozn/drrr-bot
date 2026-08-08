@@ -111,7 +111,7 @@ class Test(Module):
     def welcome(self, msg):
         self.bot.send(f'欢迎@{msg.user.name}进入房间')
 ```
-![聊天室截图](example.jpg)
+![聊天室截图](assets/example.jpg)
 
 * 这段代码实现了四个功能：打招呼（`sayHello`）、计算器（`calculate`）、移交房主（`chown`）和进房欢迎（`welcome`）。   
 * `cmd_dict`字典是指令字典，键为函数名，值为消息指令的正则表达式。   
@@ -174,7 +174,7 @@ self.bot: Bot对象
 
 ## 获取 drrr 前端 JS（drrr_app.js）
 
-drrr 的网页前端逻辑（API 接口、房间操作、WebSocket 连接等）都打包在 `drrr_app.js` 中。当你需要分析 drrr 的新接口、排查功能失效原因时，可以下载它来研究：
+drrr 的网页前端逻辑（API 接口、房间操作、WebSocket 连接等）都打包在 `drrr_app.js` 中（本仓库已下载一份，位于 `assets/drrr_app.js`）。当你需要分析 drrr 的新接口、排查功能失效原因时，可以下载它来研究：
 
 ```
 # 方式一：直接用 curl 下载
@@ -206,4 +206,4 @@ Tablet（平板）
 
 ## 头像<a name="avatar"></a>
 
-![Avatar](avatar.jpg)
+![Avatar](assets/avatar.jpg)

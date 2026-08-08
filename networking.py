@@ -16,7 +16,7 @@ path = os.path.dirname(__file__)
 sys.path.append(path)
 
 class Connection:
-    def __init__(self, username, tc, avater, roomID, agent, throttle, qps, msg_cb, loop):
+    def __init__(self, username, tc, avater, roomID, agent, throttle, qps, poll_interval, msg_cb, loop):
         self.username = username
         self.tc = tc
         self.avatar = avater
@@ -48,7 +48,7 @@ class Connection:
         self._poll_backoff = 0.0
         # json.php 消息轮询的固定间隔（秒）。该接口是降级接口，服务器对高频轮询
         # 支持不稳定（常返回 520），降低轮询频率可显著减少 520 与服务器压力。
-        self.poll_interval = 3.0
+        self.poll_interval = max(poll_interval, 0)
         # 使用模块级 logger，继承根 logger 的配置（由 main.py 的 basicConfig 统一管理）
         self.logger = logging.getLogger(__name__)
         self.logger.setLevel(logging.DEBUG)
