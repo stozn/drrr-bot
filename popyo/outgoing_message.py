@@ -11,6 +11,7 @@ class Outgoing_Message_Type(Enum):
     ban = 7
     change_title = 8
     change_description = 9
+    legacy = 10  # 通用的房间操作（解封/封IP/离开房间/切歌/改人数上限等）
 
 class OutgoingMessage:
     def __init__(self, msg):
@@ -66,3 +67,9 @@ class OutgoingChangeDescription:
     def __init__(self, description):
         self.type = Outgoing_Message_Type.change_description
         self.description = description
+
+class OutgoingLegacy:
+    """通用的房间操作消息，data 为要 POST 的字段（如 {unban: id}、{leave: "leave"}）。"""
+    def __init__(self, data):
+        self.type = Outgoing_Message_Type.legacy
+        self.data = data

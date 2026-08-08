@@ -172,6 +172,27 @@ self.bot: Bot对象
 5. 出现其他报错请截图提issue
 
 
+## 获取 drrr 前端 JS（drrr_app.js）
+
+drrr 的网页前端逻辑（API 接口、房间操作、WebSocket 连接等）都打包在 `drrr_app.js` 中。当你需要分析 drrr 的新接口、排查功能失效原因时，可以下载它来研究：
+
+```
+# 方式一：直接用 curl 下载
+curl -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" \
+  https://drrr.com/js/app.min.js -o drrr_app.js
+
+# 方式二：用 Python 下载
+python -c "import requests; r=requests.get('https://drrr.com/js/app.min.js', timeout=20); open('drrr_app.js','w',encoding='utf-8').write(r.text)"
+```
+
+下载后可以在其中搜索关键接口：
+- 所有后端接口封装在 `DRRRAPI` 对象里（如 `post_legacy`、`get_talks_legacy`、`music_skip` 等）
+- 房间写操作通过 `post_legacy` 发送到 `/room/?ajax=1`（如 `{kick: id}`、`{unban: id}`、`{leave: "leave"}`）
+- 现代 drrr 用 **Socket.IO**（`io({path: "/conn/"})`）做实时通信，`json.php` HTTP 轮询是旧版/降级机制
+
+> 提示：`drrr_app.js` 是压缩后的 JS，可用浏览器开发者工具格式化后阅读。
+
+
 ## 用户代理
 
 ```

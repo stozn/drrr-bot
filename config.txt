@@ -14,7 +14,13 @@ roomID = 6JjYq34S35
 agent = Bot
 
 # 加载的模块
-mods = Test, GuessNumber
+mods = test, guess_number, room_admin
 
 # 发送消息的等待时间（秒）
 throttle = 1.5
+
+# 全局限速：所有网络请求之间的最小间隔（秒），防止被网站封禁 IP
+qps = 1
+
+# 房间管理员 Tripcode（加密后的值，多个用英文逗号分隔）
+admin_tc = YtIMnsXOBE

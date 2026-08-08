@@ -3,6 +3,7 @@ import os
 import sys
 import traceback
 import datetime
+import random
 import aiofiles
 import aiohttp
 import logging
@@ -41,6 +42,13 @@ class Connection:
         self._qps_lock = asyncio.Lock()
         # 已处理消息 id 集合，用于去除服务器重复返回的历史消息
         self._processed_msg_ids = set()
+        # bot 成功加入房间的时刻，用于过滤掉加入之前的旧消息
+        self.join_time = 0.0
+        # 轮询接口连续异常时的退避时间（秒），避免 520 时频繁重试
+        self._poll_backoff = 0.0
+        # json.php 消息轮询的固定间隔（秒）。该接口是降级接口，服务器对高频轮询
+        # 支持不稳定（常返回 520），降低轮询频率可显著减少 520 与服务器压力。
+        self.poll_interval = 3.0
         # 使用模块级 logger，继承根 logger 的配置（由 main.py 的 basicConfig 统一管理）
         self.logger = logging.getLogger(__name__)
         self.logger.setLevel(logging.DEBUG)
@@ -198,6 +206,7 @@ class Connection:
             await self.update_room_state()
             if self.room is not None:
                 self.room_connected = True
+                self.join_time = time.time()  # 记录加入时刻，用于过滤历史消息
                 self.info('成功连接到房间【' + self.room.name + '】')
                 await self.start_loop()
                 
@@ -296,6 +305,7 @@ class Connection:
                         await self.update_room_state()
                         if self.room is not None:
                             self.room_connected = True
+                            self.join_time = time.time()  # 记录加入时刻，用于过滤历史消息
                             self.info('成功加入房间【' + self.room.name + '】')
                             await self.start_loop()
                             return
@@ -328,7 +338,8 @@ class Connection:
     async def start_loop(self):
         task1 = asyncio.create_task(self.room_loop())
         task2 = asyncio.create_task(self.send_loop())
-        await asyncio.gather(task1, task2)
+        task3 = asyncio.create_task(self.keepalive_loop())
+        await asyncio.gather(task1, task2, task3)
 
     # 房间循环接受消息
     async def room_loop(self):
@@ -352,7 +363,6 @@ class Connection:
             except Exception:
                 self.debug(traceback.format_exc())
 
-        last = datetime.datetime.now()
         while self.room_connected:
             try:
                 await self._throttle()
@@ -369,18 +379,21 @@ class Connection:
                             self.room_connected = False
                             break
                         except Exception:
-                            # 服务器返回了非 JSON（如 520 错误页/空内容），短暂等待后继续轮询
-                            self.warning(f'房间状态接口返回异常(status={resp.status})，稍后重试')
-                            await asyncio.sleep(3)
+                            # 服务器返回了非 JSON（如 520 错误页/空内容），按指数退避等待后重试，
+                            # 避免服务器不稳定时高频请求
+                            if self._poll_backoff == 0:
+                                self._poll_backoff = 3
+                            else:
+                                self._poll_backoff = min(self._poll_backoff * 2, 30)
+                            self.debug(f'房间状态接口返回异常(status={resp.status})，'
+                                       f'{self._poll_backoff}秒后重试')
+                            await asyncio.sleep(self._poll_backoff)
                             continue
                     
                     stat = resp.status   
                     if stat == 200:
-                        now = datetime.datetime.now()
-                        if (now - last).seconds > 60:
-                            self.dm(self.own_user.id, 'keep')
-                            last = now
-                            print('keep')
+                        # drrr.com 不允许给自己发 DM，旧的 keep 保活方式已失效，
+                        # 轮询 json.php?update=X 本身即可保持房间连接活跃，无需额外保活。
                         if 'talks' in resp_parsed:
                             try:
                                 msgs = popyo.talks_to_msgs(resp_parsed['talks'], self.room)
@@ -394,6 +407,11 @@ class Connection:
                                         if len(self._processed_msg_ids) > 2000:
                                             self._processed_msg_ids = set(
                                                 list(self._processed_msg_ids)[-1000:])
+
+                                    # 忽略 bot 加入房间之前的历史消息，只响应加入后的新消息
+                                    if getattr(msg, 'time', None) is not None and \
+                                            msg.time < self.join_time:
+                                        continue
 
                                     if msg.message == '/stop':
                                         self.send('已停止运行')
@@ -435,8 +453,11 @@ class Connection:
                                             break
 
                                     elif msg.type == popyo.Message_Type.kick:
-                                        if msg.to.id != self.own_user.id:
-                                            del self.room.users[msg.to.id]
+                                        # kick 消息的 to 可能为 None（服务器偶发省略），跳过避免崩溃
+                                        if msg.to is not None and \
+                                                msg.to.id != self.own_user.id:
+                                            if msg.to.id in self.room.users:
+                                                del self.room.users[msg.to.id]
                                             await self.msg_cb(msg)
 
                                     elif msg.type == popyo.Message_Type.ban:
@@ -489,7 +510,11 @@ class Connection:
                             self.debug('空闲状态')
                             self.last_error = False
 
+                        # 轮询成功，退避减半（不立即归零，避免持续 520 时高频重试）
+                        self._poll_backoff = max(0, self._poll_backoff // 2)
                         self.room.update = resp_parsed['update']
+                        # 降低降级接口的轮询频率，减少 520 与服务器压力
+                        await asyncio.sleep(self.poll_interval)
                     else:
                         self.error('无效信息')
                         self.error(traceback.format_exc())
@@ -505,7 +530,11 @@ class Connection:
         await self.join_room(self.roomID)
     
     # 发送消息
-    async def send_post(self, data):
+    async def send_post(self, data, loudness=None):
+        # loudness=3 表示「轻言细语」（悄悄话），不显示为普通聊天气泡，用于保持连接活跃
+        if loudness is not None:
+            data = dict(data)
+            data['loudness'] = loudness
         for _ in range(self.retries):
             try:
                 await self._throttle()
@@ -518,6 +547,25 @@ class Connection:
                 self.error('发送【' + data['message'] + '】时产生错误' + str(e))
                 self.error(traceback.format_exc())
                 await asyncio.sleep(1)
+
+    # 保活循环：定期发送「轻言细语」消息，保持房间连接活跃。
+    # 间隔在 base 秒上下随机浮动 jitter 秒，避免过于规律被服务器识别为机器人。
+    async def keepalive_loop(self, base=60, jitter=10):
+        self.debug(f'开始保活循环（每 {base}±{jitter} 秒）')
+        while self.room_connected:
+            try:
+                await asyncio.sleep(base + random.uniform(-jitter, jitter))
+                if self.room_connected:
+                    # 发送一条「轻言细语」（loudness=3）保活消息。
+                    # drrr 要求消息非空（空消息会返回 "Message is empty!"），
+                    # 因此使用零宽空格（\u200b），几乎不可见且不影响房间聊天。
+                    await self.send_post({'message': '\u200b'}, loudness=3)
+                    self.debug('已发送轻言细语保活消息')
+            except asyncio.CancelledError:
+                break
+            except Exception:
+                self.debug(traceback.format_exc())
+                await asyncio.sleep(base)
 
     # 消息循环
     async def send_loop(self):
@@ -545,11 +593,13 @@ class Connection:
                     elif type == popyo.Outgoing_Message_Type.kick:
                         data = {'kick': out_msg.receiver}
                     elif type == popyo.Outgoing_Message_Type.ban:
-                        data = {'report_and_ban_user': out_msg.receiver}
+                        data = {'ban': out_msg.receiver}
                     elif type == popyo.Outgoing_Message_Type.change_title:
                         data = {'room_name': out_msg.title}
                     elif type == popyo.Outgoing_Message_Type.change_description:
                         data = {'room_description': out_msg.description}
+                    elif type == popyo.Outgoing_Message_Type.legacy:
+                        data = out_msg.data
 
                     t1 = time.time()
                     await self.send_post(data)
@@ -625,4 +675,40 @@ class Connection:
     def desc(self, description):
         async def putQ():
             await self.sendQ.put(popyo.OutgoingChangeDescription(description))
+        asyncio.run_coroutine_threadsafe(putQ(), self.loop)
+
+    # 解封用户
+    def unban(self, receiver):
+        async def putQ():
+            await self.sendQ.put(popyo.OutgoingLegacy({'unban': receiver}))
+        asyncio.run_coroutine_threadsafe(putQ(), self.loop)
+
+    # 离开房间
+    def leave_room(self):
+        async def putQ():
+            await self.sendQ.put(popyo.OutgoingLegacy({'leave': 'leave'}))
+        asyncio.run_coroutine_threadsafe(putQ(), self.loop)
+
+    # 跳过当前歌曲（切歌）
+    def music_skip(self):
+        async def putQ():
+            await self.sendQ.put(popyo.OutgoingLegacy({'message': '/skip'}))
+        asyncio.run_coroutine_threadsafe(putQ(), self.loop)
+
+    # 修改房间人数上限
+    def room_limit(self, limit):
+        async def putQ():
+            await self.sendQ.put(popyo.OutgoingLegacy({'room_limit': limit}))
+        asyncio.run_coroutine_threadsafe(putQ(), self.loop)
+
+    # 切换DJ模式（True=开启，False=关闭）
+    def toggle_dj_mode(self, enabled=True):
+        async def putQ():
+            await self.sendQ.put(popyo.OutgoingLegacy({'dj_mode': enabled}))
+        asyncio.run_coroutine_threadsafe(putQ(), self.loop)
+
+    # 切换全音量模式（True=开启，False=关闭）
+    def toggle_music_full_mode(self, enabled=True):
+        async def putQ():
+            await self.sendQ.put(popyo.OutgoingLegacy({'music_full_mode': enabled}))
         asyncio.run_coroutine_threadsafe(putQ(), self.loop)
