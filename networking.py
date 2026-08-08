@@ -184,7 +184,14 @@ class Connection:
 
     # 恢复登录
     async def resume(self, cookies_file):
-        self.cookie_jar.load(cookies_file)
+        # cookie 文件可能是其他 aiohttp 版本生成的（pickle/JSON 格式不兼容），加载失败时删除并重新登录
+        try:
+            self.cookie_jar.load(cookies_file)
+        except Exception:
+            self.warning('cookie 文件损坏或格式不兼容，删除并重新登录')
+            os.remove(cookies_file)
+            await self.login()
+            return
         stat, resp = await self.get_lounge()
         if stat == 200:
             self.info('保存的cookie有效，成功登录')
