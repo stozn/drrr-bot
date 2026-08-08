@@ -8,28 +8,16 @@ import aiohttp
 import logging
 import time
 import json
+import hashlib
 import popyo
-from curl_cffi import AsyncSession
 
 path = os.path.dirname(__file__)
 sys.path.append(path)
-
-headers = {
-    "content-type": "application/x-www-form-urlencoded; charset=UTF-8",
-    "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.6045.160 Safari/537.36",
-    "x-requested-with": "XMLHttpRequest"
-}
-
-proxies = {
-    'http': 'http://127.0.0.1:7890',
-    'https': 'http://127.0.0.1:7890'
-}
 
 class Connection:
     def __init__(self, username, tc, avater, roomID, agent, throttle, msg_cb, loop):
         self.username = username
         self.tc = tc
-        self.name_tc = username if tc == 'None' else username + '#' + tc
         self.avatar = avater
         self.room_connected = False
         self.room = None
@@ -38,20 +26,22 @@ class Connection:
         self.session = None
         self.endpoint = 'https://drrr.com'
         self.cookie_path = path + '/cookies'
-        # self.cookie_jar = aiohttp.CookieJar(unsafe=True)
         self.ua = agent
-        self.cookies = {
-            "drrr-session-1": input("【请输入cookies】\ndrrr-session-1: "),
-            "cf_clearance": input("cf_clearance: ")
-        }
         self.retries = 100
         self.sendQ = asyncio.Queue()
         self.throttle = throttle
         self.char_limit = 140
         self.msg_cb = msg_cb
         self.loop = loop
-        self.logger = logging.getLogger()
-        self.set_loglevel(logging.DEBUG)
+        # aiohttp 新版 CookieJar 需要运行中的 event loop，传入显式 loop
+        self.cookie_jar = aiohttp.CookieJar(unsafe=True, loop=self.loop)
+        # 全局 QPS 限速：所有请求之间至少间隔 qps_interval 秒，防止被网站封禁
+        self.qps_interval = 2.5
+        self._qps_last = 0.0
+        self._qps_lock = asyncio.Lock()
+        # 使用模块级 logger，继承根 logger 的配置（由 main.py 的 basicConfig 统一管理）
+        self.logger = logging.getLogger(__name__)
+        self.logger.setLevel(logging.DEBUG)
 
         if not os.path.isdir(self.cookie_path):
             os.makedirs(self.cookie_path)
@@ -59,22 +49,6 @@ class Connection:
     def start(self):
         self.loop.run_until_complete(self.login())
 
-    # 设置日志级别
-    def set_loglevel(self, level):
-        time_format = '%Y-%m-%d %H:%M:%S'
-        debug_formatter = logging.Formatter('%(asctime)s | %(levelname)s | %(message)s', time_format)
-        formatter = logging.Formatter('%(asctime)s | %(message)s', time_format)
-        self.logger.setLevel(level)
-
-        handler = logging.StreamHandler()
-        handler.setLevel(level)
-        if(level == logging.DEBUG):
-            handler.setFormatter(debug_formatter)
-        else:
-            handler.setFormatter(formatter)
-
-        self.logger.addHandler(handler)
-    
     def debug(self, msg):
         self.logger.debug('\033[1;32m' + msg + '\033[0m')
     
@@ -102,8 +76,19 @@ class Connection:
     # 新建会话
     async def get_session(self):
         if self.session is None:
-            self.session = AsyncSession(headers=headers, cookies=self.cookies, proxies=proxies)
+            self.session = aiohttp.ClientSession(
+                cookie_jar=self.cookie_jar,
+                headers={'User-Agent': self.ua})
         return self.session
+
+    # 全局 QPS 限速：保证任意两次请求之间至少间隔 qps_interval 秒
+    async def _throttle(self):
+        async with self._qps_lock:
+            now = time.monotonic()
+            wait = self._qps_last + self.qps_interval - now
+            if wait > 0:
+                await asyncio.sleep(wait)
+            self._qps_last = time.monotonic()
     
     # 重新连接
     async def reconnect(self):
@@ -113,55 +98,87 @@ class Connection:
         await self.login()
         await self.join_room(self.room.id)
     
-    # 新建登录
-    async def get_login_token(self):
-        session = await self.get_session()
-        resp = await session.get(self.endpoint + '/?api=json')
-        stat, resp = resp.status_code, resp.text
-        if stat == 200:
-            resp_parsed = json.loads(resp)
-            token = resp_parsed['token']
-            self.debug('token值：' + token)
-            return token
-        else:
-            self.error('获取token失败')
-            return None
+    # 从 HTML 表单中提取隐藏字段
+    def _extract_field(self, html, name):
+        import re
+        # 兼容 data-value 与 value 两种写法
+        m = re.search(name + r'"(?: data-value| value)="([^"]*)"', html)
+        if m:
+            return m.group(1)
+        m = re.search(r'name="' + name + r'"[^>]*(?: data-value| value)="([^"]*)"', html)
+        return m.group(1) if m else None
 
-    async def post_login(self, token):
-        data = {'name': self.name_tc,
-                'login': 'ENTER',
-                'token': token,
-                'language': 'zh-CN',
-                'icon': self.avatar}
+    # 解决 drrr.com 的 PoW（Proof of Work）挑战
+    def solve_challenge(self, nonce, timestamp, difficulty):
+        difficulty = int(difficulty)
+        timestamp = str(timestamp)
+        self.info(f'正在解决PoW挑战（难度{difficulty}）...')
+        prefix = '0' * difficulty
+        counter = 1  # 与前端 JS 一致，counter 从 1 开始
+        while True:
+            h = hashlib.sha256((nonce + timestamp + str(counter)).encode('utf-8')).hexdigest()
+            if h.startswith(prefix):
+                break
+            counter += 1
+        self.debug(f'PoW完成：counter={counter}，hash={h[:16]}...')
+        return {'hash': h, 'nonce': nonce, 'timestamp': timestamp,
+                'counter': counter, 'difficulty': str(difficulty)}
+
+    # 新建登录：GET 首页获取 token 与 PoW 挑战
+    async def get_login_page(self):
+        await self._throttle()
         session = await self.get_session()
-        resp = await session.post(self.endpoint + '/?api=json', data=data)
-        self.debug('登录返回值：' + str(resp.status))
-        return (resp.status, resp.text, self.session.cookie_jar)
+        async with session.get(self.endpoint + '/') as resp:
+            html = await resp.text()
+            if resp.status != 200:
+                self.error('获取登录页失败')
+                return None
+            token = self._extract_field(html, 'token')
+            nonce = self._extract_field(html, 'nonce')
+            timestamp = self._extract_field(html, 'timestamp')
+            difficulty = self._extract_field(html, 'difficulty')
+            if token:
+                self.debug('token值：' + token)
+            return {'token': token, 'nonce': nonce,
+                    'timestamp': timestamp, 'difficulty': difficulty}
+
+    # 提交登录（POST 到首页，完整模拟浏览器表单）
+    async def post_login(self, page):
+        solved = self.solve_challenge(page['nonce'], page['timestamp'], page['difficulty'])
+        data = {'name': self.username,
+                'tripcode': self.tc,
+                'login': 'ENTER',
+                'token': page['token'],
+                'nonce': page['nonce'],
+                'timestamp': str(page['timestamp']),
+                'difficulty': str(page['difficulty']),
+                'challenged': json.dumps(solved)}
+        await self._throttle()
+        session = await self.get_session()
+        async with session.post(self.endpoint + '/', data=data, allow_redirects=False) as resp:
+            self.debug('登录返回值：' + str(resp.status))
+            return (resp.status, await resp.text(), resp.headers.get('Location'), self.session.cookie_jar)
     
     async def login(self):
-        await self.connect()
         cookies_file = f'{self.cookie_path}/{self.username}.cookie'
         if os.path.isfile(cookies_file):
             await self.resume(cookies_file)
             return
 
         self.info('新建登录中')
-        token = await self.get_login_token()
-        if token is not None:
-            stat, resp, cookie_jar = await self.post_login(token)
-            self.debug(f'status: {stat}, resp: {resp}')
-            resp_parsed = json.loads(resp)
-            if stat == 200:
-                if resp_parsed['message'] == 'ok':
-                    cookie_jar.save(cookies_file)
-                    self.info('登录成功，已保存cookie')
-                    await self.join_room(self.roomID)
-                        
-                else:
-                    self.warning(f'message: {resp_parsed["message"]}, try again...')
-                    await self.login()
+        page = await self.get_login_page()
+        if page and page['token']:
+            stat, resp, location, cookie_jar = await self.post_login(page)
+            self.debug(f'status: {stat}, location: {location}, resp: {resp[:200]}')
+            # 登录成功返回 302 跳转到 /lounge/ 或 /room/
+            if stat in (200, 302, 303) and location and location.startswith('/'):
+                cookie_jar.save(cookies_file)
+                self.info('登录成功，已保存cookie')
+                await self.join_room(self.roomID)
             else:
-                self.error(f"登录失败: {resp_parsed['error']}")
+                self.error(f'登录失败: {resp[:300]}')
+        else:
+            self.error('获取登录token失败')
 
     # 恢复登录
     async def resume(self, cookies_file):
@@ -186,63 +203,51 @@ class Connection:
         else:
             self.error('恢复连接时发生错误')   
 
-    # 使用已有cookie连接
-    async def connect(self):
-        stat, resp = await self.get_lounge()
-        if stat == 200:
-            self.info('连接成功')
-            await self.update_room_state()
-            if self.room is not None:
-                self.room_connected = True
-                self.info('成功连接到房间【' + self.room.name + '】')
-                await self.start_loop()
-                
-            else:
-                self.warning('已不在房间中')
-                await self.join_room(self.roomID)
-                
-        else:
-            self.error('恢复连接时发生错误')
 
     # 获取大厅信息
     async def get_lounge(self):
+        await self._throttle()
         session = await self.get_session()
-        resp = await session.get(self.endpoint + '/lounge?api=json')
-        stat = resp.status_code
-        text = resp.text
-        return stat, text
+        async with session.get(self.endpoint + '/lounge?api=json') as resp:
+            stat = resp.status
+            text = await resp.text()
+            return stat, text
         
     # 更新房间信息
     async def update_room_state(self, preserve_banned=False):
         try:
+            await self._throttle()
             session = await self.get_session()
-            resp = await session.get(self.endpoint + '/json.php?fast=1')
-            if resp.status_code == 200:
-                content_type = resp.headers.get('Content-Type', '').lower()
-                resp_parsed = None
-                if 'application/json' in content_type:
-                    resp_parsed = resp.json()
-                else:
-                    resp = resp.text
-                    resp_json = json.loads(resp)
-                    self.error(f"更新房间信息失败1: {resp_json['error']}")
-                    return
+            async with session.get(self.endpoint + '/json.php?fast=1') as resp:
+                if resp.status == 200:
+                    content_type = resp.headers.get('Content-Type', '').lower()
+                    resp_parsed = None
+                    if 'application/json' in content_type:
+                        resp_parsed = await resp.json()
+                    else:
+                        resp = await resp.text()
+                        resp_json = json.loads(resp)
+                        self.error(f"更新房间信息失败1: {resp_json['error']}")
+                        return
 
-                users = {}
+                    users = {}
 
-                if 'roomId' in resp_parsed:
-                    for user in resp_parsed['users']:
-                        users[user['id']] = popyo.User(user['id'], user['name'], user['icon'],
-                                                        user['tripcode'] if 'tripcode' in user.keys() else '无', user['device'],
-                                                        True if 'admin' in user.keys() and user['admin'] else False)
+                    if 'roomId' in resp_parsed:
+                        for user in resp_parsed['users']:
+                            users[user['id']] = popyo.User(user['id'], user['name'], user['icon'],
+                                                            user['tripcode'] if 'tripcode' in user.keys() else '无', user['device'],
+                                                            True if 'admin' in user.keys() and user['admin'] else False)
 
-                    banned_ids = self.room.banned_ids if preserve_banned else set()
-                    self.room = popyo.Room(resp_parsed['name'], resp_parsed['description'], resp_parsed['limit'], users, resp_parsed['language'],
-                                            resp_parsed['roomId'], None, False, False, resp_parsed['host'], resp_parsed['update'])
-                    if 'np' in resp_parsed:
-                        self.room.music_np = resp_parsed['np']
-                    self.room.banned_ids = banned_ids
-            return
+                        banned_ids = self.room.banned_ids if preserve_banned else set()
+                        music = resp_parsed.get('music', resp_parsed.get('musicRoom', False))
+                        dj_mode = resp_parsed.get('music_dj_mode', resp_parsed.get('dj_mode', False))
+                        self.room = popyo.Room(resp_parsed['name'], resp_parsed.get('description'), resp_parsed['limit'], users,
+                                                resp_parsed['language'], resp_parsed['roomId'], music, dj_mode,
+                                                resp_parsed.get('np', False), resp_parsed['host'], resp_parsed['update'])
+                        if 'np' in resp_parsed:
+                            self.room.music_np = resp_parsed['np']
+                        self.room.banned_ids = banned_ids
+                return
         except Exception:
             self.error(f"更新房间信息失败2")
             self.error(traceback.format_exc())
@@ -255,45 +260,53 @@ class Connection:
                 return user.id
         return None
 
-    # 进入房间
+    # 进入房间（带 PoW challenge）
     async def join_room(self, room_id):
         for _ in range(self.retries):
             try:
+                await self._throttle()
                 session = await self.get_session()
-                resp = await session.get(self.endpoint + '/room/?id=' + room_id + '&api=json')
-                stat = resp.status_code
-                content_type = resp.headers.get('Content-Type', '').lower()
-                resp_json = None
-                if 'application/json' in content_type:
-                    resp_json = resp.json()
-                    if('error' in resp_json.keys()):
-                        self.error(f"进入房间失败: {resp_json['error']}")
+                # 1. 获取房间页，提取 challenge 表单
+                async with session.get(self.endpoint + '/room/?id=' + room_id) as resp:
+                    html = await resp.text()
+                nonce = self._extract_field(html, 'nonce')
+                timestamp = self._extract_field(html, 'timestamp')
+                difficulty = self._extract_field(html, 'difficulty')
+                if nonce and timestamp and difficulty:
+                    solved = self.solve_challenge(nonce, timestamp, difficulty)
+                    challenged = json.dumps(solved)
+                    # 2. 带 challenged 提交进房间
+                    await self._throttle()
+                    async with session.get(
+                        self.endpoint + '/room/?id=' + room_id + '&challenged=' + challenged,
+                        allow_redirects=False) as resp:
+                        stat = resp.status
+                        location = resp.headers.get('Location')
+                        body = await resp.text()
+                    if stat in (200, 302) and location == '/room/':
+                        await self.update_room_state()
+                        if self.room is not None:
+                            self.room_connected = True
+                            self.info('成功加入房间【' + self.room.name + '】')
+                            await self.start_loop()
+                            return
+                        else:
+                            self.warning('进入房间失败：无法更新房间信息')
+                            await self.join_room(self.roomID)
+                            return
+                    else:
+                        self.warning(f'进入房间未成功: status={stat}, location={location}, body={body[:200]}')
+                        await self.login()
                         return
                 else:
-                    resp = resp.text
-                    resp_json = json.loads(resp)
-                    self.error(f"进入房间失败1: {resp_json['error']}")
-                    return
-                
-                if stat == 200 and 'message' in resp_json and resp_json['message'] == 'ok' and resp_json['redirect'] == 'room':
-                    await self.update_room_state()
-                    if self.room is not None:
-                        self.room_connected = True
-                        self.info('成功加入房间【' + self.room.name + '】')
-                        await self.start_loop()
-                        
-                    else:
-                        print(resp_json)
-                        self.warning('进入房间失败：无法更新房间信息')
-                        await self.join_room(self.roomID)
-                else:
-                    self.warning('未登录') 
-                    await self.login()
-                return
-            except aiohttp.client_exceptions.ContentTypeError:
-                self.error(f"进入房间失败2: {resp_json['error']}")
-                self.error(resp.text)
-                raise()
+                    self.warning('房间页未返回挑战表单，尝试直接进入')
+                    await self._throttle()
+                    async with session.get(self.endpoint + '/room/?id=' + room_id + '&api=json') as resp:
+                        stat = resp.status
+                        body = await resp.text()
+                        self.warning(f'直接进入房间 status={stat}, body={body[:200]}')
+                        await self.login()
+                        return
             except Exception as e:
                 if self.room_connected:
                     self.error('循环错误')
@@ -320,54 +333,57 @@ class Connection:
             await self.join_room(self.roomID)
             return
         
+        await self._throttle()
         session = await self.get_session()
-        resp = await session.get(self.endpoint + '/room/?api=json')
-        try:
-            resp_parsed = resp.json()
-            if resp.status_code == 200 and 'error' not in resp_parsed:
-                self.own_user = self.room.users[resp_parsed['profile']['uid']]
-        except Exception:
-            self.debug(traceback.format_exc())
+        async with session.get(self.endpoint + '/room/?api=json') as resp:
+            try:
+                resp_parsed = await resp.json()
+                if resp.status == 200 and 'error' not in resp_parsed:
+                    self.own_user = self.room.users[resp_parsed['profile']['uid']]
+            except Exception:
+                self.debug(traceback.format_exc())
 
-        last = 0
+        last = datetime.datetime.now()
         while self.room_connected:
             try:
-                resp = await session.get(self.endpoint + '/json.php?update=' + str(self.room.update), timeout=10)
-                content_type = resp.headers.get('Content-Type', '').lower()
-                resp_parsed = None
-                if 'application/json' in content_type:
-                    resp_parsed = resp.json()
-                else:
-                    resp = resp.text
-                    resp_json = json.loads(resp)
-                    self.debug(f"更新房间信息失败: {resp_json['error']}")
-                    self.room_connected = False
-                    break
-                
-                stat = resp.status_code   
-                if stat == 200:
-                    # now = datetime.datetime.now()
-                    # if (now - last).seconds > 60:
-                    #     self.dm(self.own_user.id, 'keep')
-                    #     last = now
-                    #     print('keep')
-                    if 'talks' in resp_parsed:
+                await self._throttle()
+                async with session.get(self.endpoint + '/json.php?update=' + str(self.room.update), timeout=10) as resp:
+                    content_type = resp.headers.get('Content-Type', '').lower()
+                    resp_parsed = None
+                    if 'application/json' in content_type:
+                        resp_parsed = await resp.json()
+                    else:
+                        text = await resp.text()
                         try:
-                            self.room.update = resp_parsed['update']
-                            if self.room.update > last:
-                                last = self.room.update
+                            resp_json = json.loads(text)
+                            self.debug(f"更新房间信息失败: {resp_json.get('error')}")
+                            self.room_connected = False
+                            break
+                        except Exception:
+                            # 服务器返回了非 JSON（如 520 错误页/空内容），短暂等待后继续轮询
+                            self.warning(f'房间状态接口返回异常(status={resp.status})，稍后重试')
+                            await asyncio.sleep(3)
+                            continue
+                    
+                    stat = resp.status   
+                    if stat == 200:
+                        now = datetime.datetime.now()
+                        if (now - last).seconds > 60:
+                            self.dm(self.own_user.id, 'keep')
+                            last = now
+                            print('keep')
+                        if 'talks' in resp_parsed:
+                            try:
                                 msgs = popyo.talks_to_msgs(resp_parsed['talks'], self.room)
                                 for msg in [x for x in msgs if x is not None]:
-                                    if msg.time < self.room.update:
-                                        continue
-                                    
+
                                     if msg.message == '/stop':
                                         self.send('已停止运行')
                                         await asyncio.sleep(2)
                                         sys.exit(0)
 
                                     if msg.message and msg.message != 'keep':
-                                        user = getattr(msg, 'user', getattr(msg, 'to', '系统消息'))
+                                        user = getattr(msg, 'user', None) or getattr(msg, 'to', None) or '系统消息'
                                         info = f"{user} | {msg.message}"
                                         self.info(info)
                                         userInfo = user if type(user) is str else user.name + ',' + user.tc
@@ -381,7 +397,7 @@ class Connection:
                                         await self.msg_cb(msg)
 
                                     elif msg.type == popyo.Message_Type.leave:
-                                        if msg.user.id == self.own_user.id:
+                                        if msg.user is not None and msg.user.id == self.own_user.id:
                                             self.room_connected = False
                                             self.room = None
                                             self.own_user = None
@@ -437,29 +453,29 @@ class Connection:
 
                                     self.last_error = False
 
-                        except Exception as e:
-                            self.error('消息 ' + str(resp_parsed) + ' 解析失败')
-                            self.error(traceback.format_exc())
+                            except Exception as e:
+                                self.error('消息 ' + str(resp_parsed) + ' 解析失败')
+                                self.error(traceback.format_exc())
 
-                    elif 'error' in resp_parsed:
-                        if not self.last_error:
-                            self.last_error = True
-                            continue
+                        elif 'error' in resp_parsed:
+                            if not self.last_error:
+                                self.last_error = True
+                                continue
+                            else:
+                                # self.exit_loop = True
+                                self.error('房间信息更新失败:1')
+                                await self.join_room(self.roomID)
+                                break
+
                         else:
-                            # self.exit_loop = True
-                            self.error('房间信息更新失败:1')
-                            await self.join_room(self.roomID)
-                            break
+                            self.debug('空闲状态')
+                            self.last_error = False
 
+                        self.room.update = resp_parsed['update']
                     else:
-                        self.debug('空闲状态')
-                        self.last_error = False
-
-                    self.room.update = resp_parsed['update']
-                else:
-                    self.error('无效信息')
-                    self.error(traceback.format_exc())
-                    break
+                        self.error('无效信息')
+                        self.error(traceback.format_exc())
+                        break
             except asyncio.TimeoutError:
                 pass
             except Exception:
@@ -474,11 +490,12 @@ class Connection:
     async def send_post(self, data):
         for _ in range(self.retries):
             try:
+                await self._throttle()
                 session = await self.get_session()
-                resp = await session.post(self.endpoint + '/room/?ajax=1&api=json', data=data)
-                if resp.status_code != 200:
-                    self.error('发送【' + data['message'] + '】失败')
-                return
+                async with session.post(self.endpoint + '/room/?ajax=1&api=json', data=data) as resp:
+                    if resp.status != 200:
+                        self.error('发送【' + data['message'] + '】失败')
+                    return
             except Exception as e:
                 self.error('发送【' + data['message'] + '】时产生错误' + str(e))
                 self.error(traceback.format_exc())

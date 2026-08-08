@@ -1,3 +1,5 @@
+import operator
+
 from modules.module import Module
 
 
@@ -21,8 +23,22 @@ class Test(Module):
 
     def calculate(self, msg):
         cont = msg.message.split(' ', 1)[1]
-        result = eval(cont)
-        self.bot.send(cont + ' = ' + str(result))
+        # 用白名单运算符求值，禁止 eval()，防止任意代码执行
+        try:
+            result = self._safe_eval(cont)
+        except (ValueError, ZeroDivisionError):
+            self.bot.send(f'表达式无效: {cont}')
+            return
+        self.bot.send(f'{cont} = {result}')
+
+    @staticmethod
+    def _safe_eval(expr):
+        """安全地计算形如 '1 + 2' 的四则运算表达式。"""
+        left, op, right = expr.split()
+        a, b = int(left), int(right)
+        ops = {'+': operator.add, '-': operator.sub,
+               '*': operator.mul, '/': operator.truediv}
+        return ops[op](a, b)
 
     def chown(self, msg):
         self.bot.chown(msg.user.id)
