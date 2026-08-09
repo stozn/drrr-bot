@@ -98,6 +98,15 @@ class BotClient:
             self.logger.error("登录失败，程序退出")
             return
 
+        try:
+            await self._run()
+        finally:
+            await self.stop()
+
+    async def _run(self) -> None:
+        """登录成功后的主流程（进房 → 连接 → 接收）。"""
+        self.logger.info("启动中（用户：%s，房间：%s）", self.name, self.room_id)
+
         # 判断是否已在房间中
         await self.http.update_room_state(self.room)
         if self.room.room_id:
@@ -266,11 +275,14 @@ class BotClient:
         if msg.time and msg.time < self.history.join_time:
             return
 
-        # /stop 退出命令
+        # /stop 退出命令：关闭 Socket.IO，使 run_forever 正常返回，
+        # 进而 _run 返回、start 的 finally 调用 stop() 完成清理。
+        # （不能用 loop.stop()：asyncio.run 下会抛 RuntimeError 且不清理资源）
         if msg.content == "/stop":
             self.send("已停止运行")
             await asyncio.sleep(2)
-            asyncio.get_running_loop().stop()
+            if self.sio:
+                self.sio.close()
             return
 
         # 日志（控制台 + CSV 落盘）
@@ -304,8 +316,13 @@ class BotClient:
             target = msg.target
             if isinstance(target, User):
                 self.room.users.pop(target.id, None)
+                # 自己被踢出：清空状态并等待重新加入
                 if target.id == getattr(self.own_user, "id", None):
                     self.room_connected = False
+                    self.room = Room()
+                    self.own_user = None
+                    await self._rejoin()
+                    return
             await self.registry.dispatch(msg)
 
         elif msg.type == MessageType.BAN:

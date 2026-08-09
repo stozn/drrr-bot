@@ -8,7 +8,7 @@ tc = mytc123
 avatar = setton
 
 # 房间ID
-roomID = 6JjYq34S35
+roomID = gmX1Tjcprv
 
 # 用户代理
 agent = Bot
@@ -21,10 +21,6 @@ throttle = 1.5
 
 # 全局限速：所有网络请求之间的最小间隔（秒），防止被网站封禁 IP
 qps = 1
-
-# 消息轮询间隔（秒）：json.php 是降级接口，服务器对高频轮询不稳定（常返回520），
-# 调大此值可减少 520 和服务器压力，代价是消息实时性略降
-poll_interval = 3
 
 # 房间管理员 Tripcode（加密后的值，多个用英文逗号分隔）
 admin_tc = YtIMnsXOBE

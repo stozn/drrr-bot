@@ -447,30 +447,6 @@ class SIoClient:
     # ------------------------------------------------------------------
     # 重连 / 关闭
     # ------------------------------------------------------------------
-    def reconnect(self, config: dict[str, Any]) -> asyncio.Task[None] | None:
-        """指数退避重连。返回重连协程任务（由调用方管理生命周期）。"""
-        if self._manual_close:
-            return None
-        if not self._loop:
-            return None
-
-        async def _reconnect() -> None:
-            delay = self._reconnect_delay
-            while self._running.is_set() is False and not self._manual_close:
-                self.logger.info("将在 %.1f 秒后重连...", delay)
-                await asyncio.sleep(delay)
-                delay = min(delay * 2 + random.uniform(0, 1), 60)
-                try:
-                    await self.run_forever(config)
-                    self._reconnect_delay = 3.0
-                    self.logger.info("重连成功")
-                    return
-                except Exception as e:
-                    self.logger.error("重连失败: %s", e)
-                    self.close(notify=False)
-
-        return self._loop.create_task(_reconnect())
-
     def close(self, notify: bool = True) -> None:
         """关闭连接并停止后台线程。"""
         self._manual_close = True

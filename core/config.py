@@ -10,7 +10,6 @@
 - ``mods``: 加载的模块名列表（逗号分隔）
 - ``throttle``: 发送消息间隔（秒）
 - ``qps``: 全局限速（请求最小间隔秒）
-- ``poll_interval``: 预留的轮询间隔（Socket.IO 下仅作兼容保留）
 - ``admin_tc``: 管理员 Tripcode 列表（逗号分隔）
 """
 
@@ -36,7 +35,6 @@ DEFAULT_CONFIG: dict[str, object] = {
     "roomID": "6JjYq34S35",
     "throttle": 1.5,
     "qps": 0.5,
-    "poll_interval": 3.0,
     "admin_tc": "",
     "mods": ["test", "guess_number"],
 }
@@ -45,7 +43,6 @@ DEFAULT_CONFIG: dict[str, object] = {
 _TYPE_RULES: dict[str, tuple[object, bool]] = {
     "throttle": (float, False),
     "qps": (float, False),
-    "poll_interval": (float, False),
     "mods": (lambda s: [x.strip() for x in s.split(",")], True),
     "admin_tc": (lambda s: [x.strip() for x in s.split(",")], True),
 }
@@ -63,7 +60,6 @@ class Config:
     mods: list[str] = field(default_factory=list)
     throttle: float = 1.5
     qps: float = 0.5
-    poll_interval: float = 3.0
     admin_tc: list[str] = field(default_factory=list)
 
     @classmethod
@@ -77,7 +73,6 @@ class Config:
             mods=list(data.get("mods", []) or []),
             throttle=float(data.get("throttle", 1.5)),
             qps=float(data.get("qps", 0.5)),
-            poll_interval=float(data.get("poll_interval", 3.0)),
             admin_tc=list(data.get("admin_tc", []) or []),
         )
 

@@ -42,6 +42,8 @@ class RoomAdmin(Module):
         if not user:
             self.bot.me("未找到用户")
             return
+        if not self._check_target_ok(msg, user):
+            return
         self.bot.kick(user.id)
         self.bot.me(f"已将 @{user.name} 踢出房间")
 
@@ -52,6 +54,8 @@ class RoomAdmin(Module):
         user = self._resolve_user(msg)
         if not user:
             self.bot.me("未找到用户")
+            return
+        if not self._check_target_ok(msg, user):
             return
         self.bot.ban(user.id)
         self.bot.me(f"已封禁 @{user.name}")
@@ -126,6 +130,8 @@ class RoomAdmin(Module):
         if not user:
             self.bot.me("未找到用户")
             return
+        if not self._check_target_ok(msg, user, forbid_self=False):
+            return
         self.bot.chown(user.id)
         self.bot.me(f"已将房主转让给 @{user.name}")
 
@@ -178,6 +184,31 @@ class RoomAdmin(Module):
         self.bot.me(f"已移除管理员：{tc}")
 
     # ---------- 工具方法 ----------
+    def _check_target_ok(
+        self, msg: Message, user: User, *, forbid_self: bool = True
+    ) -> bool:
+        """检查操作目标是否允许。
+
+        两个防线：
+        - ``forbid_self=True`` 时：不能对自己（发送者）操作
+        - 一律不能对 bot 自己（机器人）操作（防止把自己踢出房间/封禁）
+
+        Args:
+            msg: 触发命令的消息。
+            user: 解析出的目标用户。
+            forbid_self: 是否禁止操作发送者自己（踢人/封禁需禁止；转让房主允许）。
+
+        Returns:
+            是否允许执行。
+        """
+        if forbid_self and msg.user is not None and user.id == msg.user.id:
+            self.bot.me("不能对自己操作")
+            return False
+        if self.bot.own_user is not None and user.id == self.bot.own_user.id:
+            self.bot.me("不能对机器人自己操作")
+            return False
+        return True
+
     @staticmethod
     def _bool_value(message: str) -> bool:
         """解析 开/关/on/off 为布尔值。"""

@@ -108,6 +108,8 @@ class HttpSession:
         self._session: AsyncSession | None = None
         self._qps_last = 0.0
         self._qps_lock = asyncio.Lock()
+        # 本次登录使用的 tripcode（写入 cookie 文件，供恢复前校验）
+        self._saved_tripcode: str = ""
 
     # ------------------------------------------------------------------
     # 会话管理
@@ -183,14 +185,19 @@ class HttpSession:
             "difficulty": self._extract_field(html, "difficulty"),
         }
 
-    async def post_login(self, page: dict[str, str]) -> LoginResult:
-        """求解 PoW 并提交登录表单。"""
+    async def post_login(self, page: dict[str, str], tc: str = "") -> LoginResult:
+        """求解 PoW 并提交登录表单。
+
+        Args:
+            page: 登录页表单字段（token/nonce/timestamp/difficulty）。
+            tc: Tripcode，随登录表单提交（空字符串表示不使用）。
+        """
         solved = solve_challenge(
             page["nonce"], page["timestamp"], int(page["difficulty"] or 1)
         )
         data = {
             "name": self.username,
-            "tripcode": "",
+            "tripcode": tc,
             "login": "ENTER",
             "token": page["token"],
             "nonce": page["nonce"],
@@ -210,28 +217,36 @@ class HttpSession:
     async def login(self, tc: str = "") -> bool:
         """执行登录。
 
-        - 优先从 cookie 文件恢复
+        - 优先从 cookie 文件恢复（仅当 cookie 记录的 tripcode 与当前配置一致）
         - 否则新建登录并保存 cookie
 
         Returns:
             是否登录成功（进入大厅）。
         """
         if os.path.isfile(self.cookie_file):
-            if await self.resume():
+            saved_tc = self.get_saved_tripcode()
+            if saved_tc == tc and await self.resume():
                 return True
-            self.logger.warning("cookie 无效，删除并重新登录")
+            if saved_tc != tc:
+                self.logger.warning(
+                    "cookie 的 tripcode 与配置不一致（%r != %r），删除并重新登录",
+                    saved_tc, tc,
+                )
+            else:
+                self.logger.warning("cookie 无效，删除并重新登录")
             try:
                 os.remove(self.cookie_file)
             except OSError:
                 pass
 
         self.logger.info("新建登录中")
+        self._saved_tripcode = tc
         for attempt in range(MAX_RETRIES):
             page = await self.get_login_page()
             if not page or not page.get("token"):
                 self.logger.error("获取登录 token 失败")
                 return False
-            result = await self.post_login(page)
+            result = await self.post_login(page, tc=tc)
             self.logger.debug("登录响应: status=%s location=%s", result.status, result.location)
             if result.ok and result.location.startswith("/"):
                 self.save_cookies()
@@ -258,11 +273,15 @@ class HttpSession:
     # Cookie 持久化
     # ------------------------------------------------------------------
     def save_cookies(self) -> None:
-        """把当前会话 cookie 保存到文件（JSON 序列化）。"""
+        """把当前会话 cookie 保存到文件（JSON 序列化）。
+
+        同时记录本次登录使用的 tripcode，供下次恢复时校验。
+        """
         try:
             data = {
                 "cookies": list(self.session.cookies.items()),
                 "saved_at": int(time.time()),
+                "tripcode": self._saved_tripcode,
             }
             with open(self.cookie_file, "w", encoding="utf-8") as fh:
                 json.dump(data, fh, ensure_ascii=False, indent=2)
@@ -276,12 +295,17 @@ class HttpSession:
                 data = json.load(fh)
             for name, value in data.get("cookies", []):
                 self.session.cookies.set(name, value)
+            self._saved_tripcode = data.get("tripcode", "")
             return True
         except FileNotFoundError:
             return False
         except Exception as e:
             self.logger.warning("加载 cookie 失败: %s", e)
             return False
+
+    def get_saved_tripcode(self) -> str:
+        """返回 cookie 文件中记录的 tripcode（用于恢复前校验）。"""
+        return self._saved_tripcode
 
     # ------------------------------------------------------------------
     # 房间操作
