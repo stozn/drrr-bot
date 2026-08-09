@@ -1,5 +1,2 @@
-# Socket.IO 重构版依赖（Python 3.13）
-# curl_cffi：HTTP + WebSocket 核心（impersonate='chrome' 过 Cloudflare）
 curl_cffi>=0.16.0
-# aiohttp：辅助 HTTP 备用
 aiohttp>=3.10
