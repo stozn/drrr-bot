@@ -70,8 +70,20 @@ class ModuleRegistry:
             return False
         try:
             mod = importlib.import_module(f"{self.modules_pkg}.{name}")
-        except ModuleNotFoundError:
-            self.logger.error("未找到模块【%s】（请确认文件存在、依赖已安装）", name)
+        except ModuleNotFoundError as e:
+            # 区分「模块本身不存在」与「模块内依赖缺失」：
+            # - e.name 指向目标模块时，说明文件不存在
+            # - e.name 是别的模块时，说明是依赖缺失，应提示具体缺哪个包
+            if e.name == f"{self.modules_pkg}.{name}":
+                self.logger.error(
+                    "未找到模块【%s】（请确认 modules/%s.py 存在）", name, name
+                )
+            else:
+                self.logger.error(
+                    "模块【%s】依赖缺失：找不到 %r\n"
+                    "请安装对应依赖，例如：pip install %s",
+                    name, e.name, e.name,
+                )
             return False
         except Exception:
             self.logger.error("模块【%s】导入失败:\n%s", name, traceback.format_exc())
